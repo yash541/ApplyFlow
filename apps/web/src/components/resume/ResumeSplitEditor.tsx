@@ -1,0 +1,1232 @@
+"use client";
+
+import { useState, useEffect, useMemo, useRef } from "react";
+import dynamic from "next/dynamic";
+import {
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
+  Save, Loader2, Pencil, Check, X, GripVertical, Eye, EyeOff,
+  ArrowLeft, Sparkles, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Plus,
+  SlidersHorizontal, Trash2,
+} from "lucide-react";
+import { api } from "@/lib/api";
+import {
+  useResumeLabStore, type TailoredContent, type TemplateId, type FontStyle,
+  type CustomSection, type EditorPrefs,
+} from "@/store/resumeLab";
+import {
+  analyzeContent, DEFAULT_SECTION_ORDER, getSectionLabel, flattenSkills, autoGroupSkills,
+} from "./pdf/shared";
+
+const PdfViewer = dynamic(
+  () => import("./PdfViewer").then(m => ({ default: m.PdfViewer })),
+  { ssr: false },
+);
+
+type LayoutOverrides = EditorPrefs["layout"];
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const ACCENT_COLORS = [
+  { hex: "#2563eb", label: "Blue" },
+  { hex: "#0d9488", label: "Teal" },
+  { hex: "#7c3aed", label: "Purple" },
+  { hex: "#ea580c", label: "Amber" },
+  { hex: "#16a34a", label: "Green" },
+  { hex: "#475569", label: "Slate" },
+];
+
+const TEMPLATES: { id: TemplateId; label: string }[] = [
+  { id: "classic", label: "Classic" },
+  { id: "modern", label: "Modern" },
+  { id: "minimal", label: "Minimal" },
+  { id: "ats", label: "ATS" },
+  { id: "executive", label: "Exec" },
+];
+
+// ─── Editable primitives ──────────────────────────────────────────────────────
+function EditableField({
+  value, onSave, placeholder = "Click to edit", className = "",
+}: {
+  value: string; onSave: (v: string) => void; placeholder?: string; className?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={() => { onSave(draft); setEditing(false); }}
+        onKeyDown={e => {
+          if (e.key === "Enter") { onSave(draft); setEditing(false); }
+          if (e.key === "Escape") { setDraft(value); setEditing(false); }
+        }}
+        className={`bg-surface-container-high border border-primary/50 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary/40 w-full ${className}`}
+      />
+    );
+  }
+  return (
+    <span
+      onClick={() => { setDraft(value); setEditing(true); }}
+      className={`cursor-text group/field inline-flex items-center gap-1 hover:text-on-surface transition-colors ${className} ${!value ? "italic opacity-40" : ""}`}
+    >
+      {value || placeholder}
+      <Pencil className="h-2.5 w-2.5 opacity-0 group-hover/field:opacity-60 transition-opacity shrink-0" />
+    </span>
+  );
+}
+
+function EditableArea({
+  value, onSave, className = "",
+}: {
+  value: string; onSave: (v: string) => void; className?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  if (editing) {
+    return (
+      <div className="space-y-1.5">
+        <textarea
+          autoFocus rows={3} value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { onSave(draft); setEditing(false); }
+            if (e.key === "Escape") { setDraft(value); setEditing(false); }
+          }}
+          className={`w-full bg-surface-container-high border border-primary/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none ${className}`}
+        />
+        <div className="flex items-center gap-2">
+          <button onClick={() => { onSave(draft); setEditing(false); }} className="h-6 px-2.5 rounded bg-primary text-on-primary text-xs font-medium flex items-center gap-1">
+            <Check className="h-3 w-3" /> Save
+          </button>
+          <button onClick={() => { setDraft(value); setEditing(false); }} className="h-6 px-2.5 rounded bg-white/5 border border-white/10 text-xs text-on-surface-variant">Cancel</button>
+          <span className="text-[10px] text-on-surface-variant/30">⌘↵</span>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div
+      onClick={() => { setDraft(value); setEditing(true); }}
+      className={`cursor-text group/area relative rounded-lg px-3 py-2 border border-transparent hover:border-white/10 hover:bg-white/3 transition-all ${className}`}
+    >
+      <p className="text-sm text-on-surface-variant leading-relaxed pr-5">{value}</p>
+      <Pencil className="absolute top-2 right-2 h-3 w-3 text-on-surface-variant/0 group-hover/area:text-on-surface-variant/40 transition-all" />
+    </div>
+  );
+}
+
+function EditableBullet({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const isLong = value.length > 250;
+
+  if (editing) {
+    return (
+      <div className="space-y-1 py-1 px-2">
+        <textarea autoFocus value={draft} onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { onChange(draft); setEditing(false); }
+            if (e.key === "Escape") { setDraft(value); setEditing(false); }
+          }}
+          rows={2}
+          className="w-full text-sm text-on-surface bg-surface-container-high border border-primary/50 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
+        />
+        <div className="flex items-center gap-2">
+          <button onClick={() => { onChange(draft); setEditing(false); }} className="h-6 px-2.5 rounded bg-primary text-on-primary text-xs font-medium flex items-center gap-1">
+            <Check className="h-3 w-3" /> Save
+          </button>
+          <button onClick={() => { setDraft(value); setEditing(false); }} className="h-6 px-2.5 rounded bg-white/5 border border-white/10 text-xs text-on-surface-variant">Cancel</button>
+          <span className="text-[10px] text-on-surface-variant/30">⌘↵ · Esc</span>
+          <span className="ml-auto text-[10px] text-on-surface-variant/25 font-mono">[text](url) for links</span>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div
+      onClick={() => { setDraft(value); setEditing(true); }}
+      className={`flex items-start gap-2 group/bullet cursor-text rounded-lg px-2 py-1.5 border transition-all
+        ${isLong ? "border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10" : "border-transparent hover:bg-white/5 hover:border-white/8"}`}
+    >
+      <span className="text-primary/60 mt-0.5 shrink-0 text-sm">•</span>
+      <span className="flex-1 text-sm text-on-surface-variant leading-relaxed">{value}</span>
+      <Pencil className="h-3 w-3 mt-1 shrink-0 text-on-surface-variant/0 group-hover/bullet:text-primary/50 transition-all" />
+    </div>
+  );
+}
+
+// ─── Layout slider ────────────────────────────────────────────────────────────
+function LayoutSlider({
+  label, value, min, max, step, format, onChange,
+}: {
+  label: string; value: number; min: number; max: number; step: number;
+  format: (v: number) => string; onChange: (v: number) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-on-surface-variant/60">{label}</span>
+        <span className="text-xs font-mono text-on-surface-variant/80">{format(value)}</span>
+      </div>
+      <input
+        type="range" min={min} max={max} step={step} value={value}
+        onChange={e => onChange(parseFloat(e.target.value))}
+        className="w-full h-1.5 rounded-full appearance-none bg-white/10 accent-primary cursor-pointer"
+      />
+    </div>
+  );
+}
+
+// ─── Sortable section row ─────────────────────────────────────────────────────
+function SortableSectionRow({
+  id, label, visible, isCustom, column, onToggle, onRename, onDelete, onToggleColumn,
+}: {
+  id: string; label: string; visible: boolean; isCustom: boolean;
+  column?: "sidebar" | "main";
+  onToggle: () => void; onRename: (name: string) => void; onDelete: () => void;
+  onToggleColumn?: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(label);
+
+  useEffect(() => { setNameDraft(label); }, [label]);
+
+  function confirmRename() {
+    if (nameDraft.trim()) onRename(nameDraft.trim());
+    setEditingName(false);
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border transition-all select-none
+        ${isDragging ? "bg-primary/10 border-primary/30 shadow-lg z-50" : "bg-white/3 border-white/8 hover:bg-white/6"}`}
+    >
+      <button {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-on-surface-variant/30 hover:text-on-surface-variant touch-none">
+        <GripVertical className="h-4 w-4" />
+      </button>
+
+      {editingName ? (
+        <input
+          autoFocus
+          value={nameDraft}
+          onChange={e => setNameDraft(e.target.value)}
+          onBlur={confirmRename}
+          onKeyDown={e => {
+            if (e.key === "Enter") confirmRename();
+            if (e.key === "Escape") { setNameDraft(label); setEditingName(false); }
+          }}
+          className="flex-1 text-sm bg-surface-container-high border border-primary/50 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary/40 min-w-0"
+        />
+      ) : (
+        <span
+          className="flex-1 text-sm text-on-surface group/lbl flex items-center gap-1 min-w-0 cursor-text"
+          onClick={() => setEditingName(true)}
+        >
+          <span className="truncate">{label}</span>
+          <Pencil className="h-2.5 w-2.5 opacity-0 group-hover/lbl:opacity-40 transition-opacity shrink-0" />
+        </span>
+      )}
+
+      <div className="flex items-center gap-1 shrink-0">
+        {column !== undefined && onToggleColumn && (
+          <button
+            onClick={e => { e.stopPropagation(); onToggleColumn(); }}
+            title={column === "sidebar" ? "Sidebar — click to move to main column" : "Main — click to move to sidebar"}
+            className={`h-5 w-5 rounded text-[9px] font-bold border transition-all flex items-center justify-center ${
+              column === "sidebar"
+                ? "bg-primary/15 border-primary/30 text-primary"
+                : "bg-white/4 border-white/10 text-on-surface-variant/30 hover:bg-white/8 hover:text-on-surface-variant/60"
+            }`}
+          >
+            {column === "sidebar" ? "L" : "R"}
+          </button>
+        )}
+        <button onClick={onToggle} className={`transition-colors ${visible ? "text-on-surface-variant/40 hover:text-primary" : "text-on-surface-variant/20 hover:text-on-surface-variant"}`}>
+          {visible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+        </button>
+        {isCustom && (
+          <button onClick={onDelete} className="text-on-surface-variant/20 hover:text-red-400 transition-colors">
+            <Trash2 className="h-3 w-3" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Section header ───────────────────────────────────────────────────────────
+function SectionHeader({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-2 mb-2">
+      <p className="text-[10px] font-semibold text-on-surface-variant/50 uppercase tracking-wider">{label}</p>
+      <div className="flex-1 h-px bg-white/5" />
+    </div>
+  );
+}
+
+// ─── Main Split Editor ────────────────────────────────────────────────────────
+export function ResumeSplitEditor() {
+  const {
+    tailoredContent, selectedContent,
+    selectedTemplate, accentColor, fontStyle,
+    activeApplicationId, savedResumeId,
+    draftContent, editorPrefs,
+    setSelectedTemplate, setAccentColor, setFontStyle, setTailoredContent,
+    setSavedResumeId, setDraftContent, setEditorPrefs,
+  } = useResumeLabStore();
+
+  // Editor prefs — backed by store so they survive Back → re-open
+  // On first load (sectionOrder empty), derive from DEFAULT + any custom sections in content
+  // Both wrapped in useMemo so they produce stable references between renders.
+  // Without this, new Set/array instances every render cause visibleOrder to change every render,
+  // which makes the debounce effect fire every render → infinite setPdfSnapshotKey loop.
+  const sectionOrder = useMemo(() => {
+    if (editorPrefs.sectionOrder.length > 0) return editorPrefs.sectionOrder;
+    return [
+      ...DEFAULT_SECTION_ORDER,
+      ...((draftContent ?? tailoredContent)?.customSections ?? []).map(s => s.id),
+    ];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorPrefs.sectionOrder, draftContent, tailoredContent]);
+
+  const hiddenSections = useMemo(
+    () => new Set(editorPrefs.hiddenSections),
+    [editorPrefs.hiddenSections],
+  );
+  const layout = editorPrefs.layout;
+  const compact = editorPrefs.compact;
+  const columnMap = editorPrefs.columnMap;
+
+  function setSectionOrder(updater: string[] | ((prev: string[]) => string[])) {
+    const next = typeof updater === "function" ? updater(sectionOrder) : updater;
+    setEditorPrefs({ sectionOrder: next });
+  }
+  function setHiddenSections(updater: Set<string> | ((prev: Set<string>) => Set<string>)) {
+    const next = typeof updater === "function" ? updater(hiddenSections) : updater;
+    setEditorPrefs({ hiddenSections: [...next] });
+  }
+  function setLayout(updater: LayoutOverrides | ((prev: LayoutOverrides) => LayoutOverrides)) {
+    const next = typeof updater === "function" ? updater(layout) : updater;
+    setEditorPrefs({ layout: next });
+  }
+  function setCompact(updater: boolean | ((prev: boolean) => boolean)) {
+    const next = typeof updater === "function" ? updater(compact) : updater;
+    setEditorPrefs({ compact: next });
+  }
+  function setColumnMap(updater: Record<string, "sidebar" | "main"> | ((prev: Record<string, "sidebar" | "main">) => Record<string, "sidebar" | "main">)) {
+    const next = typeof updater === "function" ? updater(columnMap) : updater;
+    setEditorPrefs({ columnMap: next });
+  }
+
+  const latestBlobRef = useRef<Blob | null>(null);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [showOriginal, setShowOriginal] = useState(false);
+  const [showLayoutControls, setShowLayoutControls] = useState(false);
+  const [newSkill, setNewSkill] = useState("");
+  const [isAddingSection, setIsAddingSection] = useState(false);
+  const [newSectionName, setNewSectionName] = useState("");
+  const [newGroupSkillInputs, setNewGroupSkillInputs] = useState<Record<number, string>>({});
+  const [newGroupName, setNewGroupName] = useState("");
+  // draftContent holds unsaved in-editor edits; falls back to tailoredContent
+  const content = draftContent ?? tailoredContent;
+
+  const analysis = useMemo(
+    () => (content ? analyzeContent(content, selectedTemplate) : null),
+    [content, selectedTemplate],
+  );
+
+  useEffect(() => {
+    // Apply recommended spacing once per resume session; skip if user already customized
+    if (analysis && !editorPrefs.layoutAutoApplied) {
+      setLayout(prev => ({ ...prev, spacing: analysis.recommendedSpacing }));
+      setEditorPrefs({ layoutAutoApplied: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analysis?.recommendedSpacing, editorPrefs.layoutAutoApplied]);
+
+  const visibleOrder = useMemo(
+    () => sectionOrder.filter(id => !hiddenSections.has(id)),
+    [sectionOrder, hiddenSections],
+  );
+
+
+  // ── Content mutators ──────────────────────────────────────────────────────
+  function patch(updater: (c: TailoredContent) => TailoredContent) {
+    setDraftContent(updater(draftContent ?? tailoredContent!));
+  }
+
+  function updateBullet(expIdx: number, bIdx: number, val: string) {
+    patch(c => ({ ...c, experience: c.experience.map((e, i) => i === expIdx ? { ...e, bullets: e.bullets.map((b, j) => j === bIdx ? val : b) } : e) }));
+  }
+  function updateExpField(expIdx: number, field: "title" | "company" | "duration", val: string) {
+    patch(c => ({ ...c, experience: c.experience.map((e, i) => i === expIdx ? { ...e, [field]: val } : e) }));
+  }
+  function updateEdu(eduIdx: number, field: "degree" | "institution" | "year", val: string) {
+    patch(c => ({ ...c, education: c.education.map((e, i) => i === eduIdx ? { ...e, [field]: val } : e) }));
+  }
+  function removeSkill(skill: string) {
+    patch(c => ({ ...c, skills: c.skills.filter(s => s !== skill) }));
+  }
+  function addSkill(skill: string) {
+    if (!skill.trim()) return;
+    patch(c => ({ ...c, skills: [...c.skills, skill.trim()] }));
+  }
+  function applyAutoGroup() {
+    patch(c => {
+      const groups = autoGroupSkills(flattenSkills(c));
+      return { ...c, skillGroups: groups, skills: groups.flatMap(g => g.items) };
+    });
+  }
+  function addSkillToGroup(gIdx: number, skill: string) {
+    if (!skill.trim()) return;
+    patch(c => {
+      const groups = (c.skillGroups ?? []).map((g, i) =>
+        i === gIdx ? { ...g, items: [...g.items, skill.trim()] } : g,
+      );
+      return { ...c, skillGroups: groups, skills: groups.flatMap(g => g.items) };
+    });
+  }
+  function removeSkillFromGroup(gIdx: number, skill: string) {
+    patch(c => {
+      const groups = (c.skillGroups ?? []).map((g, i) =>
+        i === gIdx ? { ...g, items: g.items.filter(s => s !== skill) } : g,
+      );
+      return { ...c, skillGroups: groups, skills: groups.flatMap(g => g.items) };
+    });
+  }
+  function renameSkillGroup(gIdx: number, label: string) {
+    patch(c => {
+      const groups = (c.skillGroups ?? []).map((g, i) =>
+        i === gIdx ? { ...g, label } : g,
+      );
+      return { ...c, skillGroups: groups };
+    });
+  }
+  function removeSkillGroup(gIdx: number) {
+    patch(c => {
+      const groups = (c.skillGroups ?? []).filter((_, i) => i !== gIdx);
+      return { ...c, skillGroups: groups, skills: groups.flatMap(g => g.items) };
+    });
+  }
+  function addSkillGroup(label: string) {
+    if (!label.trim()) return;
+    patch(c => {
+      const groups = [...(c.skillGroups ?? autoGroupSkills(c.skills)), { label: label.trim(), items: [] }];
+      return { ...c, skillGroups: groups };
+    });
+  }
+  function updateSummary(val: string) {
+    patch(c => ({ ...c, summary: val }));
+  }
+  function updateName(val: string) {
+    patch(c => ({ ...c, name: val }));
+  }
+  function updateContact(field: keyof TailoredContent["contact"], val: string) {
+    patch(c => ({ ...c, contact: { ...c.contact, [field]: val } }));
+  }
+  function addExperience() {
+    patch(c => ({
+      ...c,
+      experience: [...c.experience, { title: "", company: "", duration: "", bullets: [""] }],
+    }));
+  }
+  function deleteExperience(idx: number) {
+    patch(c => ({ ...c, experience: c.experience.filter((_, i) => i !== idx) }));
+  }
+  function addExpBullet(expIdx: number) {
+    patch(c => ({
+      ...c,
+      experience: c.experience.map((e, i) => i === expIdx ? { ...e, bullets: [...e.bullets, ""] } : e),
+    }));
+  }
+  function deleteExpBullet(expIdx: number, bIdx: number) {
+    patch(c => ({
+      ...c,
+      experience: c.experience.map((e, i) => i === expIdx ? { ...e, bullets: e.bullets.filter((_, j) => j !== bIdx) } : e),
+    }));
+  }
+  function addEducation() {
+    patch(c => ({ ...c, education: [...c.education, { degree: "", institution: "", year: "" }] }));
+  }
+  function deleteEducation(idx: number) {
+    patch(c => ({ ...c, education: c.education.filter((_, i) => i !== idx) }));
+  }
+
+  // ── Section name / custom section mutators ────────────────────────────────
+  function renameSectionLabel(id: string, name: string) {
+    if (id.startsWith("custom_")) {
+      patch(c => ({
+        ...c,
+        customSections: (c.customSections ?? []).map(s => s.id === id ? { ...s, label: name } : s),
+      }));
+    } else {
+      patch(c => ({ ...c, sectionNames: { ...(c.sectionNames ?? {}), [id]: name } }));
+    }
+  }
+
+  function addCustomSection(name: string) {
+    const id = `custom_${Date.now()}`;
+    const newSection: CustomSection = { id, label: name, items: [] };
+    patch(c => ({ ...c, customSections: [...(c.customSections ?? []), newSection] }));
+    setSectionOrder(prev => [...prev, id]);
+  }
+
+  function deleteCustomSection(id: string) {
+    patch(c => ({ ...c, customSections: (c.customSections ?? []).filter(s => s.id !== id) }));
+    setSectionOrder(prev => prev.filter(sid => sid !== id));
+    setHiddenSections(prev => { const next = new Set(prev); next.delete(id); return next; });
+  }
+
+  function addCustomSectionItem(sectionId: string) {
+    patch(c => ({
+      ...c,
+      customSections: (c.customSections ?? []).map(s =>
+        s.id === sectionId ? { ...s, items: [...s.items, { title: "", subtitle: "", bullets: [] }] } : s,
+      ),
+    }));
+  }
+
+  function updateCustomItem(sectionId: string, itemIdx: number, field: "title" | "subtitle", val: string) {
+    patch(c => ({
+      ...c,
+      customSections: (c.customSections ?? []).map(s =>
+        s.id === sectionId
+          ? { ...s, items: s.items.map((item, i) => i === itemIdx ? { ...item, [field]: val } : item) }
+          : s,
+      ),
+    }));
+  }
+
+  function deleteCustomSectionItem(sectionId: string, itemIdx: number) {
+    patch(c => ({
+      ...c,
+      customSections: (c.customSections ?? []).map(s =>
+        s.id === sectionId ? { ...s, items: s.items.filter((_, i) => i !== itemIdx) } : s,
+      ),
+    }));
+  }
+
+  function addCustomBullet(sectionId: string, itemIdx: number) {
+    patch(c => ({
+      ...c,
+      customSections: (c.customSections ?? []).map(s =>
+        s.id === sectionId
+          ? { ...s, items: s.items.map((item, i) => i === itemIdx ? { ...item, bullets: [...item.bullets, ""] } : item) }
+          : s,
+      ),
+    }));
+  }
+
+  function updateCustomBullet(sectionId: string, itemIdx: number, bIdx: number, val: string) {
+    patch(c => ({
+      ...c,
+      customSections: (c.customSections ?? []).map(s =>
+        s.id === sectionId
+          ? {
+              ...s,
+              items: s.items.map((item, i) =>
+                i === itemIdx ? { ...item, bullets: item.bullets.map((b, j) => j === bIdx ? val : b) } : item,
+              ),
+            }
+          : s,
+      ),
+    }));
+  }
+
+  function deleteCustomBullet(sectionId: string, itemIdx: number, bIdx: number) {
+    patch(c => ({
+      ...c,
+      customSections: (c.customSections ?? []).map(s =>
+        s.id === sectionId
+          ? {
+              ...s,
+              items: s.items.map((item, i) =>
+                i === itemIdx ? { ...item, bullets: item.bullets.filter((_, j) => j !== bIdx) } : item,
+              ),
+            }
+          : s,
+      ),
+    }));
+  }
+
+  // ── Column assignment (Modern only) ──────────────────────────────────────
+  function getSectionColumn(id: string): "sidebar" | "main" {
+    return columnMap[id] ?? ((id === "education" || id === "skills") ? "sidebar" : "main");
+  }
+  function toggleSectionColumn(id: string) {
+    const next = getSectionColumn(id) === "sidebar" ? "main" : "sidebar";
+    setColumnMap(prev => ({ ...prev, [id]: next }));
+  }
+
+  async function blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        resolve(result.split(",")[1] ?? "");
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  // ── Save to DB ────────────────────────────────────────────────────────────
+  async function handleSave() {
+    if (!content || (!activeApplicationId && !savedResumeId)) return;
+    setSaveState("saving");
+    try {
+      const tailored_content = content as unknown as Record<string, unknown>;
+      let resumeId = savedResumeId;
+
+      let pdf_bytes: string | undefined;
+      if (latestBlobRef.current) {
+        try { pdf_bytes = await blobToBase64(latestBlobRef.current); } catch { /* non-fatal */ }
+      }
+
+      if (savedResumeId) {
+        await api.resumes.update(savedResumeId, { tailored_content, pdf_bytes });
+      } else if (activeApplicationId) {
+        const saved = await api.resumes.saveTailored({ application_id: activeApplicationId, tailored_content, pdf_bytes });
+        resumeId = saved.id;
+        setSavedResumeId(saved.id);
+      }
+
+      setSaveState("saved");
+
+      // If opened from a job card (has application link), notify + redirect back
+      if (activeApplicationId && resumeId) {
+        try {
+          const app = await api.applications.get(activeApplicationId);
+          window.dispatchEvent(new CustomEvent("af_resume_saved", {
+            detail: {
+              resumeId,
+              applicationId: activeApplicationId,
+              company: app.company,
+              role: app.role,
+              jobUrl: app.job_url ?? null,
+            },
+          }));
+          if (app.job_url) {
+            // Small delay so the content script can write to storage before we navigate
+            await new Promise(r => setTimeout(r, 300));
+            window.location.href = app.job_url;
+            return;
+          }
+        } catch {
+          // Non-fatal — fall through to normal saved state
+        }
+      }
+
+      setTimeout(() => setSaveState("idle"), 2500);
+    } catch {
+      setSaveState("error");
+      setTimeout(() => setSaveState("idle"), 3000);
+    }
+  }
+
+  // ── DnD ──────────────────────────────────────────────────────────────────
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setSectionOrder(prev => arrayMove(prev, prev.indexOf(active.id as string), prev.indexOf(over.id as string)));
+    }
+  }
+
+  const overflows = (analysis?.estimatedPages ?? 0) > 1.05;
+
+  if (!content) return null;
+
+  const customSections = content.customSections ?? [];
+
+  return (
+    <div className="-m-6 flex h-[calc(100vh-3.5rem)] overflow-hidden">
+
+      {/* ── Left: PDF Preview ─────────────────────────────────────────────── */}
+      <div className="flex-1 min-w-0 bg-[#141414] flex flex-col">
+        <div className="flex items-center justify-between px-4 py-2.5 bg-[#0d0d0d] border-b border-white/8 shrink-0">
+          <button
+            onClick={() => { setTailoredContent(null); }}
+            className="flex items-center gap-1.5 text-sm text-white/40 hover:text-white/80 transition-colors"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" /> Back
+          </button>
+          <div className="flex items-center gap-1.5">
+            <Sparkles className="h-3.5 w-3.5 text-primary" />
+            <span className="text-sm font-medium text-white/70">Resume Editor</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {(overflows || compact) && (
+              <button
+                onClick={() => setCompact(v => !v)}
+                className={`h-8 px-3 rounded-lg border text-xs font-medium transition-all
+                  ${compact
+                    ? "border-primary/50 bg-primary/12 text-primary"
+                    : "border-white/20 text-white/60 hover:bg-white/5"}`}>
+                {compact ? "Compact on" : "Fit to 1 page"}
+              </button>
+            )}
+            {(!activeApplicationId && !savedResumeId) ? (
+              <span
+                title="Tailor from a job card to save to your tracker"
+                className="h-8 px-4 rounded-lg text-sm font-medium flex items-center gap-1.5 border border-white/10 text-white/20 cursor-not-allowed select-none"
+              >
+                <Save className="h-3.5 w-3.5" /> Save
+              </span>
+            ) : (
+              <button
+                onClick={() => void handleSave()}
+                disabled={saveState === "saving"}
+                className={`h-8 px-4 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all disabled:opacity-50 border
+                  ${saveState === "saved"
+                    ? "bg-green-500/15 border-green-500/30 text-green-400"
+                    : saveState === "error"
+                    ? "bg-error/15 border-error/30 text-error"
+                    : "bg-primary/15 border-primary/30 text-primary hover:bg-primary/25"}`}
+              >
+                {saveState === "saving"
+                  ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</>
+                  : saveState === "saved"
+                  ? <><Check className="h-3.5 w-3.5" /> Saved</>
+                  : saveState === "error"
+                  ? "Save failed — retry"
+                  : <><Save className="h-3.5 w-3.5" /> Save</>
+                }
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="flex-1 min-h-0">
+          <PdfViewer
+            templateId={selectedTemplate}
+            accentColor={accentColor}
+            fontStyle={fontStyle}
+            compact={compact}
+            layout={layout}
+            sectionOrder={visibleOrder}
+            columnMap={selectedTemplate === "modern" ? columnMap : undefined}
+            content={content}
+            onBlobReady={(blob) => { latestBlobRef.current = blob; }}
+          />
+        </div>
+
+        {analysis && (
+          <div className="shrink-0 px-4 py-2 bg-[#0d0d0d] border-t border-white/8 flex items-center gap-5 text-xs">
+            <div className="flex items-center gap-1.5">
+              {analysis.longBulletCount === 0 ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <AlertTriangle className="h-3 w-3 text-amber-400" />}
+              <span className="text-white/40">{analysis.longBulletCount === 0 ? "Bullets OK" : `${analysis.longBulletCount} long`}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {!overflows ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <AlertTriangle className="h-3 w-3 text-amber-400" />}
+              <span className="text-white/40">{!overflows ? "Est. 1 page" : `Est. ~${analysis.estimatedPages.toFixed(1)} pages`}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-white/30">ATS</span>
+              <span className="font-semibold" style={{ color: content.ats_score >= 80 ? "#22c55e" : content.ats_score >= 60 ? "#f59e0b" : "#ef4444" }}>
+                {content.ats_score}
+              </span>
+            </div>
+            <div className="ml-auto flex items-center gap-1.5">
+              <span className="text-white/30">Spacing {layout.spacing.toFixed(1)}×</span>
+              <span className="text-white/20">·</span>
+              <span className="text-white/30">Margins {layout.margins.toFixed(1)}×</span>
+              {layout.fontDelta !== 0 && <><span className="text-white/20">·</span><span className="text-white/30">Font {layout.fontDelta > 0 ? "+" : ""}{layout.fontDelta}pt</span></>}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Right: Edit Sidebar ───────────────────────────────────────────── */}
+      <div className="w-[352px] shrink-0 border-l border-white/8 flex flex-col bg-surface overflow-hidden">
+        <div className="flex-1 overflow-y-auto">
+
+          {/* ── Template ─────────────────────────────────────────────────── */}
+          <div className="px-4 pt-4 pb-3 border-b border-white/5">
+            <SectionHeader label="Template" />
+            <div className="grid grid-cols-5 gap-1">
+              {TEMPLATES.map(t => (
+                <button key={t.id} onClick={() => setSelectedTemplate(t.id)}
+                  className={`py-1.5 rounded-lg text-[10px] font-medium border transition-all
+                    ${selectedTemplate === t.id ? "border-primary bg-primary/12 text-primary" : "border-white/8 text-on-surface-variant/50 hover:border-white/20 hover:bg-white/5"}`}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Style ────────────────────────────────────────────────────── */}
+          <div className="px-4 py-3 border-b border-white/5">
+            <SectionHeader label="Style" />
+            <div className="flex items-center gap-6">
+              <div>
+                <p className="text-[10px] text-on-surface-variant/40 mb-1.5">Colour</p>
+                <div className="flex gap-1.5">
+                  {ACCENT_COLORS.map(c => (
+                    <button key={c.hex} onClick={() => setAccentColor(c.hex)} title={c.label}
+                      className={`h-5 w-5 rounded-full border-2 transition-all ${accentColor === c.hex ? "border-white scale-110 shadow" : "border-transparent hover:scale-110"}`}
+                      style={{ backgroundColor: c.hex }} />
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-[10px] text-on-surface-variant/40 mb-1.5">Font</p>
+                <div className="flex gap-1">
+                  {(["sans", "serif"] as FontStyle[]).map(f => (
+                    <button key={f} onClick={() => setFontStyle(f)}
+                      className={`h-7 px-3 rounded-md text-xs font-medium border transition-all
+                        ${fontStyle === f ? "bg-primary/15 border-primary/40 text-primary" : "bg-white/3 border-white/10 text-on-surface-variant/60 hover:bg-white/8"}`}>
+                      {f === "sans" ? "Sans" : "Serif"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Layout controls ───────────────────────────────────────────── */}
+          <div className="px-4 py-3 border-b border-white/5">
+            <button onClick={() => setShowLayoutControls(v => !v)} className="flex items-center gap-2 w-full group">
+              <SlidersHorizontal className="h-3 w-3 text-on-surface-variant/40" />
+              <p className="text-[10px] font-semibold text-on-surface-variant/50 uppercase tracking-wider flex-1 text-left">Layout</p>
+              {showLayoutControls ? <ChevronUp className="h-3 w-3 text-on-surface-variant/30" /> : <ChevronDown className="h-3 w-3 text-on-surface-variant/30" />}
+            </button>
+            {showLayoutControls && (
+              <div className="mt-3 space-y-3.5">
+                <LayoutSlider label="Spacing" value={layout.spacing} min={0.7} max={2.5} step={0.05}
+                  format={v => `${v.toFixed(2)}×`} onChange={v => setLayout(prev => ({ ...prev, spacing: v }))} />
+                <LayoutSlider label="Margins" value={layout.margins} min={0.6} max={1.4} step={0.05}
+                  format={v => `${v.toFixed(2)}×`} onChange={v => setLayout(prev => ({ ...prev, margins: v }))} />
+                <LayoutSlider label="Font size" value={layout.fontDelta} min={-2} max={2} step={0.5}
+                  format={v => `${v > 0 ? "+" : ""}${v}pt`} onChange={v => setLayout(prev => ({ ...prev, fontDelta: v }))} />
+                {selectedTemplate === "modern" && (
+                  <LayoutSlider label="Sidebar width" value={layout.sidebarWidth} min={130} max={200} step={5}
+                    format={v => `${v}pt`} onChange={v => setLayout(prev => ({ ...prev, sidebarWidth: v }))} />
+                )}
+                <button onClick={() => { setLayout({ spacing: analysis?.recommendedSpacing ?? 1, margins: 1, fontDelta: 0, sidebarWidth: 162 }); }}
+                  className="text-[10px] text-on-surface-variant/30 hover:text-on-surface-variant/60 transition-colors">
+                  Reset to auto
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* ── Sections ─────────────────────────────────────────────────── */}
+          <div className="px-4 py-3 border-b border-white/5">
+            <SectionHeader label="Sections" />
+            <p className="text-[10px] text-on-surface-variant/30 mb-2">
+              Drag to reorder · click name to rename · eye to hide
+              {selectedTemplate === "modern" && <span className="ml-1 text-primary/50">· L/R = sidebar / main</span>}
+            </p>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={sectionOrder} strategy={verticalListSortingStrategy}>
+                <div className="space-y-1.5">
+                  {sectionOrder.map(id => (
+                    <SortableSectionRow
+                      key={id}
+                      id={id}
+                      label={getSectionLabel(id, content)}
+                      visible={!hiddenSections.has(id)}
+                      isCustom={id.startsWith("custom_")}
+                      column={selectedTemplate === "modern" ? getSectionColumn(id) : undefined}
+                      onToggle={() => setHiddenSections(prev => {
+                        const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next;
+                      })}
+                      onRename={name => renameSectionLabel(id, name)}
+                      onDelete={() => deleteCustomSection(id)}
+                      onToggleColumn={selectedTemplate === "modern" ? () => toggleSectionColumn(id) : undefined}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+
+            {/* Add Section */}
+            {isAddingSection ? (
+              <div className="flex gap-1.5 mt-1.5">
+                <input
+                  autoFocus
+                  value={newSectionName}
+                  onChange={e => setNewSectionName(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && newSectionName.trim()) {
+                      addCustomSection(newSectionName.trim());
+                      setNewSectionName(""); setIsAddingSection(false);
+                    }
+                    if (e.key === "Escape") { setNewSectionName(""); setIsAddingSection(false); }
+                  }}
+                  placeholder="Section name…"
+                  className="flex-1 h-7 px-2 rounded-md bg-white/5 border border-white/10 text-xs text-on-surface placeholder:text-on-surface-variant/30 focus:outline-none focus:border-primary/50"
+                />
+                <button
+                  onClick={() => {
+                    if (newSectionName.trim()) {
+                      addCustomSection(newSectionName.trim());
+                      setNewSectionName(""); setIsAddingSection(false);
+                    }
+                  }}
+                  className="h-7 w-7 rounded-md bg-primary/10 border border-primary/20 text-primary flex items-center justify-center hover:bg-primary/20 transition-all">
+                  <Check className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => { setNewSectionName(""); setIsAddingSection(false); }}
+                  className="h-7 w-7 rounded-md bg-white/5 border border-white/10 text-on-surface-variant/50 flex items-center justify-center hover:bg-white/10 transition-all">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setIsAddingSection(true)}
+                className="mt-1.5 w-full py-1.5 rounded-lg border border-dashed border-white/10 text-[10px] text-on-surface-variant/30 hover:border-white/20 hover:text-on-surface-variant/50 transition-all flex items-center justify-center gap-1">
+                <Plus className="h-3 w-3" /> Add section
+              </button>
+            )}
+          </div>
+
+          {/* ── Content editing ───────────────────────────────────────────── */}
+          <div className="px-4 py-3 space-y-5">
+            <SectionHeader label="Edit Content" />
+
+            {/* Name + contact */}
+            <div className="space-y-1 p-3 rounded-xl bg-white/3 border border-white/6 hover:border-white/10 transition-colors">
+              <EditableField value={content.name} onSave={updateName}
+                className="text-sm font-bold text-on-surface" />
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 mt-1">
+                {(["email", "phone", "location", "linkedin", "github", "website"] as const).map(field => (
+                  <EditableField key={field} value={content.contact[field] ?? ""} placeholder={field}
+                    onSave={v => updateContact(field, v)}
+                    className="text-xs text-on-surface-variant/60" />
+                ))}
+              </div>
+            </div>
+
+            {/* Summary */}
+            {content.summary !== undefined && (
+              <div className="space-y-1">
+                <p className="text-[10px] font-semibold text-on-surface-variant/40 uppercase tracking-wider px-1">
+                  {getSectionLabel("summary", content)}
+                </p>
+                <EditableArea value={content.summary} onSave={updateSummary} />
+              </div>
+            )}
+
+            {/* Experience */}
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 px-1">
+                <p className="text-[10px] font-semibold text-on-surface-variant/40 uppercase tracking-wider flex-1">
+                  {getSectionLabel("experience", content)}
+                </p>
+                <button onClick={addExperience}
+                  className="h-5 px-1.5 rounded bg-white/5 border border-white/10 text-[10px] text-on-surface-variant/50 hover:bg-white/10 flex items-center gap-0.5 shrink-0">
+                  <Plus className="h-2.5 w-2.5" /> Add
+                </button>
+              </div>
+              {content.experience.map((exp, i) => (
+                <div key={i} className="space-y-1.5 p-3 rounded-xl bg-white/3 border border-white/6 hover:border-white/10 transition-colors">
+                  <div className="flex items-start gap-2">
+                    <EditableField value={exp.title} onSave={v => updateExpField(i, "title", v)}
+                      className="text-sm font-semibold text-on-surface flex-1 min-w-0" />
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <EditableField value={exp.duration} onSave={v => updateExpField(i, "duration", v)}
+                        className="text-xs text-on-surface-variant/50" />
+                      <button onClick={() => deleteExperience(i)}
+                        className="text-on-surface-variant/20 hover:text-red-400 transition-colors">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  <EditableField value={exp.company} onSave={v => updateExpField(i, "company", v)}
+                    className="text-xs text-on-surface-variant/60" />
+                  <div className="mt-1 rounded-lg border border-white/5 overflow-hidden">
+                    {exp.bullets.map((b, j) => (
+                      <div key={j} className="group/brow flex items-start">
+                        <div className="flex-1 min-w-0">
+                          <EditableBullet value={b} onChange={v => updateBullet(i, j, v)} />
+                        </div>
+                        <button onClick={() => deleteExpBullet(i, j)}
+                          className="mt-2 mr-1.5 opacity-0 group-hover/brow:opacity-100 text-on-surface-variant/30 hover:text-red-400 transition-all shrink-0">
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={() => addExpBullet(i)}
+                    className="text-[10px] text-on-surface-variant/30 hover:text-on-surface-variant/60 flex items-center gap-1 transition-colors">
+                    <Plus className="h-2.5 w-2.5" /> Add bullet
+                  </button>
+                </div>
+              ))}
+              {content.experience.length === 0 && (
+                <button onClick={addExperience}
+                  className="w-full py-3 rounded-xl border border-dashed border-white/10 text-xs text-on-surface-variant/30 hover:border-white/20 hover:text-on-surface-variant/50 transition-all flex items-center justify-center gap-1">
+                  <Plus className="h-3 w-3" /> Add experience
+                </button>
+              )}
+            </div>
+
+            {/* Education */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 px-1">
+                <p className="text-[10px] font-semibold text-on-surface-variant/40 uppercase tracking-wider flex-1">
+                  {getSectionLabel("education", content)}
+                </p>
+                <button onClick={addEducation}
+                  className="h-5 px-1.5 rounded bg-white/5 border border-white/10 text-[10px] text-on-surface-variant/50 hover:bg-white/10 flex items-center gap-0.5 shrink-0">
+                  <Plus className="h-2.5 w-2.5" /> Add
+                </button>
+              </div>
+              {content.education.map((edu, i) => (
+                <div key={i} className="p-3 rounded-xl bg-white/3 border border-white/6 hover:border-white/10 transition-colors space-y-0.5">
+                  <div className="flex items-start gap-2">
+                    <EditableField value={edu.degree} onSave={v => updateEdu(i, "degree", v)}
+                      className="text-sm font-medium text-on-surface flex-1 min-w-0" />
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <EditableField value={edu.year} onSave={v => updateEdu(i, "year", v)}
+                        className="text-xs text-on-surface-variant/50" />
+                      <button onClick={() => deleteEducation(i)}
+                        className="text-on-surface-variant/20 hover:text-red-400 transition-colors">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </div>
+                  <EditableField value={edu.institution} onSave={v => updateEdu(i, "institution", v)}
+                    className="text-xs text-on-surface-variant/60" />
+                </div>
+              ))}
+              {content.education.length === 0 && (
+                <button onClick={addEducation}
+                  className="w-full py-3 rounded-xl border border-dashed border-white/10 text-xs text-on-surface-variant/30 hover:border-white/20 hover:text-on-surface-variant/50 transition-all flex items-center justify-center gap-1">
+                  <Plus className="h-3 w-3" /> Add education
+                </button>
+              )}
+            </div>
+
+            {/* Skills */}
+            {flattenSkills(content).length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 px-1">
+                  <p className="text-[10px] font-semibold text-on-surface-variant/40 uppercase tracking-wider flex-1">
+                    {getSectionLabel("skills", content)}
+                  </p>
+                  <button
+                    onClick={applyAutoGroup}
+                    title="Automatically group skills by category"
+                    className="h-5 px-1.5 rounded bg-white/5 border border-white/10 text-[10px] text-on-surface-variant/50 hover:bg-white/10 flex items-center gap-0.5 shrink-0">
+                    <Sparkles className="h-2.5 w-2.5" /> Auto-group
+                  </button>
+                </div>
+
+                {content.skillGroups ? (
+                  <div className="space-y-2">
+                    {content.skillGroups.map((grp, gi) => (
+                      <div key={gi} className="p-2.5 rounded-xl bg-white/3 border border-white/6 hover:border-white/10 transition-colors space-y-2">
+                        <div className="flex items-center gap-1.5">
+                          <EditableField
+                            value={grp.label}
+                            onSave={label => renameSkillGroup(gi, label)}
+                            placeholder="Group name"
+                            className="flex-1 text-[11px] font-semibold text-on-surface-variant/70"
+                          />
+                          <button onClick={() => removeSkillGroup(gi)}
+                            className="text-on-surface-variant/20 hover:text-red-400 transition-colors shrink-0">
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {grp.items.map(skill => (
+                            <span key={skill}
+                              className="group/skill flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-md bg-white/5 border border-white/10 text-xs text-on-surface-variant hover:border-white/20 transition-all">
+                              {skill}
+                              <button onClick={() => removeSkillFromGroup(gi, skill)}
+                                className="h-3.5 w-3.5 rounded flex items-center justify-center text-on-surface-variant/30 hover:text-red-400 hover:bg-red-500/10 transition-all">
+                                <X className="h-2.5 w-2.5" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                        <div className="flex gap-1.5">
+                          <input
+                            value={newGroupSkillInputs[gi] ?? ""}
+                            onChange={e => setNewGroupSkillInputs(prev => ({ ...prev, [gi]: e.target.value }))}
+                            onKeyDown={e => {
+                              if (e.key === "Enter") {
+                                addSkillToGroup(gi, newGroupSkillInputs[gi] ?? "");
+                                setNewGroupSkillInputs(prev => ({ ...prev, [gi]: "" }));
+                              }
+                            }}
+                            placeholder="Add skill…"
+                            className="flex-1 h-6 px-2 rounded-md bg-white/5 border border-white/10 text-xs text-on-surface placeholder:text-on-surface-variant/30 focus:outline-none focus:border-primary/50"
+                          />
+                          <button onClick={() => {
+                            addSkillToGroup(gi, newGroupSkillInputs[gi] ?? "");
+                            setNewGroupSkillInputs(prev => ({ ...prev, [gi]: "" }));
+                          }}
+                            className="h-6 w-6 rounded-md bg-primary/10 border border-primary/20 text-primary flex items-center justify-center hover:bg-primary/20 transition-all">
+                            <Plus className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="flex gap-1.5">
+                      <input
+                        value={newGroupName}
+                        onChange={e => setNewGroupName(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") { addSkillGroup(newGroupName); setNewGroupName(""); } }}
+                        placeholder="New group name…"
+                        className="flex-1 h-7 px-2 rounded-md bg-white/5 border border-dashed border-white/10 text-xs text-on-surface placeholder:text-on-surface-variant/30 focus:outline-none focus:border-primary/50"
+                      />
+                      <button onClick={() => { addSkillGroup(newGroupName); setNewGroupName(""); }}
+                        className="h-7 w-7 rounded-md bg-primary/10 border border-primary/20 text-primary flex items-center justify-center hover:bg-primary/20 transition-all">
+                        <Plus className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-xl bg-white/3 border border-white/6 hover:border-white/10 transition-colors">
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {content.skills.map(skill => (
+                        <span key={skill}
+                          className="group/skill flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-md bg-white/5 border border-white/10 text-xs text-on-surface-variant hover:border-white/20 transition-all">
+                          {skill}
+                          <button onClick={() => removeSkill(skill)}
+                            className="h-3.5 w-3.5 rounded flex items-center justify-center text-on-surface-variant/30 hover:text-red-400 hover:bg-red-500/10 transition-all">
+                            <X className="h-2.5 w-2.5" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex gap-1.5">
+                      <input
+                        value={newSkill}
+                        onChange={e => setNewSkill(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter") { addSkill(newSkill); setNewSkill(""); } }}
+                        placeholder="Add skill…"
+                        className="flex-1 h-7 px-2 rounded-md bg-white/5 border border-white/10 text-xs text-on-surface placeholder:text-on-surface-variant/30 focus:outline-none focus:border-primary/50"
+                      />
+                      <button onClick={() => { addSkill(newSkill); setNewSkill(""); }}
+                        className="h-7 w-7 rounded-md bg-primary/10 border border-primary/20 text-primary flex items-center justify-center hover:bg-primary/20 transition-all">
+                        <Plus className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Custom sections */}
+            {customSections.filter(s => sectionOrder.includes(s.id)).map(section => (
+              <div key={section.id} className="space-y-2">
+                <div className="flex items-center gap-2 px-1">
+                  <p className="text-[10px] font-semibold text-on-surface-variant/40 uppercase tracking-wider flex-1 truncate">
+                    {getSectionLabel(section.id, content)}
+                  </p>
+                  <button
+                    onClick={() => addCustomSectionItem(section.id)}
+                    className="h-5 px-1.5 rounded bg-white/5 border border-white/10 text-[10px] text-on-surface-variant/50 hover:bg-white/10 flex items-center gap-0.5 shrink-0">
+                    <Plus className="h-2.5 w-2.5" /> Add item
+                  </button>
+                </div>
+
+                {section.items.length === 0 ? (
+                  <button
+                    onClick={() => addCustomSectionItem(section.id)}
+                    className="w-full py-3 rounded-xl border border-dashed border-white/10 text-xs text-on-surface-variant/30 hover:border-white/20 hover:text-on-surface-variant/50 transition-all flex items-center justify-center gap-1">
+                    <Plus className="h-3 w-3" /> Add first item
+                  </button>
+                ) : (
+                  section.items.map((item, itemIdx) => (
+                    <div key={itemIdx} className="p-3 rounded-xl bg-white/3 border border-white/6 hover:border-white/10 transition-colors space-y-1.5">
+                      <div className="flex items-start gap-2">
+                        <EditableField
+                          value={item.title}
+                          placeholder="Item title"
+                          onSave={v => updateCustomItem(section.id, itemIdx, "title", v)}
+                          className="text-sm font-medium text-on-surface flex-1 min-w-0"
+                        />
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <EditableField
+                            value={item.subtitle ?? ""}
+                            placeholder="date / subtitle"
+                            onSave={v => updateCustomItem(section.id, itemIdx, "subtitle", v)}
+                            className="text-xs text-on-surface-variant/50"
+                          />
+                          <button
+                            onClick={() => deleteCustomSectionItem(section.id, itemIdx)}
+                            className="text-on-surface-variant/20 hover:text-red-400 transition-colors">
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {item.bullets.length > 0 && (
+                        <div className="rounded-lg border border-white/5 overflow-hidden">
+                          {item.bullets.map((b, bIdx) => (
+                            <div key={bIdx} className="group/brow flex items-start">
+                              <div className="flex-1 min-w-0">
+                                <EditableBullet value={b} onChange={v => updateCustomBullet(section.id, itemIdx, bIdx, v)} />
+                              </div>
+                              <button
+                                onClick={() => deleteCustomBullet(section.id, itemIdx, bIdx)}
+                                className="mt-2 mr-1.5 opacity-0 group-hover/brow:opacity-100 text-on-surface-variant/30 hover:text-red-400 transition-all shrink-0">
+                                <X className="h-2.5 w-2.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      <button
+                        onClick={() => addCustomBullet(section.id, itemIdx)}
+                        className="text-[10px] text-on-surface-variant/30 hover:text-on-surface-variant/60 flex items-center gap-1 transition-colors">
+                        <Plus className="h-2.5 w-2.5" /> Add bullet
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            ))}
+
+            {/* Keywords */}
+            {content.keywords_added.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-semibold text-on-surface-variant/40 uppercase tracking-wider px-1">Keywords Injected</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {content.keywords_added.map(kw => (
+                    <span key={kw} className="px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[10px] text-primary font-medium">{kw}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Original */}
+            <div>
+              <button onClick={() => setShowOriginal(v => !v)}
+                className="flex items-center gap-1.5 text-xs text-on-surface-variant/30 hover:text-on-surface-variant/60 transition-colors">
+                {showOriginal ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                {showOriginal ? "Hide" : "Show"} original resume
+              </button>
+              {showOriginal && selectedContent && (
+                <div className="mt-2 p-3 rounded-lg bg-surface-container border border-white/5 text-xs text-on-surface-variant/50 whitespace-pre-wrap max-h-36 overflow-y-auto">
+                  {selectedContent}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,120 @@
+{
+  "manifest_version": 3,
+  "name": "ApplyFlow AI",
+  "version": "0.1.0",
+  "description": "AI-powered job application assistant — match score, autofill, and resume tailoring on LinkedIn.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "ApplyFlow AI"
+  },
+  "background": {
+    "service_worker": "src/background/index.ts",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.linkedin.com/jobs/*",
+        "https://www.linkedin.com/jobs/view/*"
+      ],
+      "js": ["src/content/linkedin.ts"],
+      "css": ["src/content/overlay.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["http://localhost:3000/resume*"],
+      "js": ["src/content/prefill-bridge.ts"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://boards.greenhouse.io/*",
+        "https://jobs.lever.co/*",
+        "https://jobs.ashbyhq.com/*",
+        "https://*.indeed.com/viewjob*",
+        "https://*.indeed.com/jobs*",
+        "https://www.glassdoor.com/job-listing/*",
+        "https://www.glassdoor.com/Job/*",
+        "https://glassdoor.co.in/job-listing/*",
+        "https://glassdoor.co.in/Job/*",
+        "https://glassdoor.co.uk/job-listing/*",
+        "https://glassdoor.co.uk/Job/*",
+        "https://glassdoor.com.au/job-listing/*",
+        "https://glassdoor.com.au/Job/*",
+        "https://glassdoor.de/job-listing/*",
+        "https://glassdoor.de/Job/*",
+        "https://glassdoor.fr/job-listing/*",
+        "https://glassdoor.fr/Job/*",
+        "https://wellfound.com/jobs/*",
+        "https://wellfound.com/company/*/jobs/*",
+        "https://jobs.smartrecruiters.com/*/*",
+        "https://apply.workable.com/*/j/*",
+        "https://*.bamboohr.com/careers/*",
+        "https://*.bamboohr.com/jobs/view.php*",
+        "https://jobs.jobvite.com/*/job/*",
+        "https://*.icims.com/jobs/*/job*"
+      ],
+      "js": ["src/content/job-portal.ts"],
+      "css": ["src/content/overlay.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.linkedin.com/jobs/*",
+        "https://boards.greenhouse.io/*",
+        "https://*.greenhouse.io/applications/*",
+        "https://jobs.lever.co/*",
+        "https://*.myworkdayjobs.com/*",
+        "https://jobs.ashbyhq.com/*",
+        "https://apply.workable.com/*",
+        "https://jobs.smartrecruiters.com/*",
+        "https://*.bamboohr.com/careers/*",
+        "https://*.jobvite.com/*",
+        "https://*.icims.com/*",
+        "https://*.indeed.com/viewjob*",
+        "http://localhost:3000/demo-apply*"
+      ],
+      "js": ["src/content/autofill.ts"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": ["storage", "activeTab", "scripting", "tabs"],
+  "host_permissions": [
+    "https://www.linkedin.com/*",
+    "https://boards.greenhouse.io/*",
+    "https://*.greenhouse.io/*",
+    "https://jobs.lever.co/*",
+    "https://*.myworkdayjobs.com/*",
+    "https://jobs.ashbyhq.com/*",
+    "https://apply.workable.com/*",
+    "https://jobs.smartrecruiters.com/*",
+    "https://*.bamboohr.com/*",
+    "https://*.jobvite.com/*",
+    "https://*.icims.com/*",
+    "https://*.indeed.com/*",
+    "https://www.glassdoor.com/*",
+    "https://glassdoor.co.in/*",
+    "https://glassdoor.co.uk/*",
+    "https://glassdoor.com.au/*",
+    "https://glassdoor.de/*",
+    "https://glassdoor.fr/*",
+    "https://wellfound.com/*",
+    "http://localhost:8000/*",
+    "http://localhost:3000/*",
+    "https://api.applyflow.ai/*",
+    "https://boards-api.greenhouse.io/*",
+    "https://api.lever.co/*",
+    "https://api.ashbyhq.com/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["src/content/overlay.html"],
+      "matches": ["https://www.linkedin.com/*"]
+    }
+  ]
+}

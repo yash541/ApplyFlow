@@ -1,0 +1,13 @@
+{
+  "name": "@applyflow/config",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./tailwind.config.ts",
+  "exports": {
+    ".": "./tailwind.config.ts",
+    "./tailwind": "./tailwind.config.ts"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.19"
+  }
+}

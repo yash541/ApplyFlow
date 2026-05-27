@@ -1,0 +1,146 @@
+import uuid
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.core.database import Base
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    resumes: Mapped[list["Resume"]] = relationship("Resume", back_populates="user", cascade="all, delete-orphan")
+    applications: Mapped[list["Application"]] = relationship("Application", back_populates="user", cascade="all, delete-orphan")
+    profile: Mapped["UserProfile | None"] = relationship("UserProfile", back_populates="user", cascade="all, delete-orphan", uselist=False)
+
+
+class UserProfile(Base):
+    __tablename__ = "user_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), unique=True, nullable=False)
+    # All profile data in one JSONB blob — flexible, no migration needed to add new fields
+    data: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    user: Mapped["User"] = relationship("User", back_populates="profile")
+
+
+class Resume(Base):
+    __tablename__ = "resumes"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+
+    # 'base' = uploaded by user | 'tailored' = AI-generated for a specific job
+    type: Mapped[str] = mapped_column(String(20), nullable=False, default="base")
+
+    # Human-readable label shown in the resume list
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Base resume fields (nullable for tailored resumes)
+    filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)  # raw text from upload
+
+    # Tailored resume fields (null for base resumes)
+    tailored_content: Mapped[dict | None] = mapped_column(JSONB, nullable=True)  # full TailoredContent JSON
+    application_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("applications.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    ats_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # base64-encoded PDF — set when user saves a tailored resume from the editor
+    pdf_bytes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    user: Mapped["User"] = relationship("User", back_populates="resumes")
+    application: Mapped["Application | None"] = relationship("Application", back_populates="tailored_resume")
+
+
+class Application(Base):
+    __tablename__ = "applications"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+
+    company: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    # Raw job page URL — used as legacy lookup key
+    job_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+
+    job_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # saved → applied → interviewing → offered → rejected
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="saved")
+
+    # Sprint 1 — Canonical fingerprinting fields
+    # fingerprint_hash: stable SHA-256 across reposts/URL changes (portal:externalId or portal:company:title:location)
+    fingerprint_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    portal: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    canonical_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    external_job_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Submission detection metadata — populated by the extension when it auto-detects an apply event
+    ats_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    applied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    user: Mapped["User"] = relationship("User", back_populates="applications")
+    observations: Mapped[list["JobObservation"]] = relationship(
+        "JobObservation", back_populates="application", cascade="all, delete-orphan"
+    )
+    # One application has at most one tailored resume
+    tailored_resume: Mapped["Resume | None"] = relationship(
+        "Resume",
+        back_populates="application",
+        uselist=False,
+        foreign_keys="Resume.application_id",
+    )
+
+
+class JobObservation(Base):
+    """One row per time the extension sees a tracked job posting.
+
+    Enables: scrape-method analytics, repost detection, and future
+    lifecycle tracking (is the job still live?).
+    """
+    __tablename__ = "job_observations"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    application_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    # Whether the job posting appeared to still be live when observed
+    is_live: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    # 'dom' | 'ai' | 'json_ld' — which extraction method was used
+    extraction_method: Mapped[str] = mapped_column(String(20), nullable=False, default="dom")
+
+    portal: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    # Flexible signals bag: confidence, attempts, selectors that hit, etc.
+    signals: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    application: Mapped["Application"] = relationship("Application", back_populates="observations")
