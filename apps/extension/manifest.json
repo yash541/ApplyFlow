@@ -67,7 +67,7 @@
       "matches": [
         "https://www.linkedin.com/jobs/*",
         "https://boards.greenhouse.io/*",
-        "https://*.greenhouse.io/applications/*",
+        "https://*.greenhouse.io/*",
         "https://jobs.lever.co/*",
         "https://*.myworkdayjobs.com/*",
         "https://jobs.ashbyhq.com/*",
@@ -77,13 +77,14 @@
         "https://*.jobvite.com/*",
         "https://*.icims.com/*",
         "https://*.indeed.com/viewjob*",
+        "https://instahyre.com/*",
         "http://localhost:3000/demo-apply*"
       ],
       "js": ["src/content/autofill.ts"],
       "run_at": "document_idle"
     }
   ],
-  "permissions": ["storage", "activeTab", "scripting", "tabs"],
+  "permissions": ["storage", "activeTab", "scripting", "tabs", "webNavigation"],
   "host_permissions": [
     "https://www.linkedin.com/*",
     "https://boards.greenhouse.io/*",
@@ -104,6 +105,7 @@
     "https://glassdoor.de/*",
     "https://glassdoor.fr/*",
     "https://wellfound.com/*",
+    "https://instahyre.com/*",
     "http://localhost:8000/*",
     "http://localhost:3000/*",
     "https://api.applyflow.ai/*",
@@ -111,6 +113,7 @@
     "https://api.lever.co/*",
     "https://api.ashbyhq.com/*"
   ],
+  "optional_host_permissions": ["<all_urls>"],
   "web_accessible_resources": [
     {
       "resources": ["src/content/overlay.html"],

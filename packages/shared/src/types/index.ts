@@ -245,7 +245,12 @@ export interface ExtensionMessage {
     | "MARK_NOTIFICATIONS_READ"
     | "SAVE_LEARNED_FIELDS"
     | "EXTRACT_JOB_AI"
-    | "RECORD_OBSERVATION";
+    | "RECORD_OBSERVATION"
+    | "APPLY_SESSION_STARTED"
+    | "ENSURE_DYNAMIC_APPLY_PERMISSION"
+    | "TELEMETRY"
+    | "GET_RECENT_APPS"
+    | "QUICK_TRACK";
   payload?: unknown;
 }
 

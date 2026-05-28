@@ -2,9 +2,35 @@ import type { ExtensionMessage, LinkedInJobData, AppNotification } from "@applyf
 
 const API_BASE = "http://localhost:8000";
 const WEB_BASE = "http://localhost:3000";
+const APPLY_SESSION_KEY = "af_apply_session";
+const ALL_URLS_ORIGIN = "<all_urls>";
+
+type BackgroundApplySession = {
+  sessionId: string;
+  applicationId: string;
+  fingerprintHash: string;
+  sourcePortal: string;
+  currentPortal: string;
+  tailoredResumeId?: string;
+  startedAt: number;
+  currentState: string;
+  currentUrl: string;
+  lastUpdatedAt: number;
+  sourceTabId?: number;
+};
+
+// chrome.storage.session is trusted-context only by default in MV3.
+// Apply sessions are intentionally written/read by content scripts so they can
+// survive cross-origin apply redirects without involving persistent local state.
+void chrome.storage.session?.setAccessLevel?.({
+  accessLevel: "TRUSTED_AND_UNTRUSTED_CONTEXTS",
+}).catch(() => {
+  // Backward compatibility: older Chrome versions may not support this setter.
+  // In that case the extension falls back to the existing overlay/autofill flow.
+});
 
 chrome.runtime.onMessage.addListener(
-  (message: ExtensionMessage, _sender, sendResponse) => {
+  (message: ExtensionMessage, sender, sendResponse) => {
     if (message.type === "ANALYZE_JOB") {
       void analyzeJob(message.payload as LinkedInJobData)
         .then(sendResponse)
@@ -121,8 +147,202 @@ chrome.runtime.onMessage.addListener(
         .catch(() => sendResponse({ ok: false }));
       return true;
     }
+
+    if (message.type === "APPLY_SESSION_STARTED") {
+      const tabId = sender.tab?.id;
+      void attachApplySessionToTab(tabId)
+        .then(() => sendResponse({ ok: true }))
+        .catch(() => sendResponse({ ok: false }));
+      return true;
+    }
+
+    if (message.type === "ENSURE_DYNAMIC_APPLY_PERMISSION") {
+      void ensureDynamicApplyPermission()
+        .then((granted) => sendResponse({ ok: granted }))
+        .catch(() => sendResponse({ ok: false }));
+      return true;
+    }
+
+    if (message.type === "TELEMETRY") {
+      pushTelemetryEvent(message.payload as Record<string, unknown>);
+      sendResponse({ ok: true });
+      return true;
+    }
+
+    if (message.type === "GET_RECENT_APPS") {
+      void getRecentApps()
+        .then(sendResponse)
+        .catch(() => sendResponse(null));
+      return true;
+    }
+
+    if (message.type === "QUICK_TRACK") {
+      void quickTrack(
+        message.payload as { company: string; role: string; url?: string },
+        sender.tab?.id,
+      )
+        .then(sendResponse)
+        .catch(() => sendResponse({ error: "Unexpected error" }));
+      return true;
+    }
   },
 );
+
+// ── Dynamic apply-session routing ─────────────────────────────────────────────
+
+const lastDynamicInjection = new Map<number, string>();
+
+function isHttpUrl(url: string): boolean {
+  try {
+    const protocol = new URL(url).protocol;
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function isKnownStaticAutofillUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    const host = u.hostname;
+    const path = u.pathname;
+
+    return (
+      host === "www.linkedin.com" && path.startsWith("/jobs/") ||
+      host === "boards.greenhouse.io" ||
+      host.endsWith(".greenhouse.io") ||
+      host === "jobs.lever.co" ||
+      host.endsWith(".myworkdayjobs.com") ||
+      host === "jobs.ashbyhq.com" ||
+      host === "apply.workable.com" ||
+      host === "jobs.smartrecruiters.com" ||
+      host.endsWith(".bamboohr.com") && path.startsWith("/careers/") ||
+      host.endsWith(".jobvite.com") ||
+      host.endsWith(".icims.com") ||
+      host.endsWith(".indeed.com") && path.startsWith("/viewjob") ||
+      host === "instahyre.com" ||
+      host === "localhost" && u.port === "3000" && path.startsWith("/demo-apply")
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function getApplySessionForBackground(): Promise<BackgroundApplySession | null> {
+  try {
+    const result = await chrome.storage.session.get(APPLY_SESSION_KEY);
+    return (result[APPLY_SESSION_KEY] as BackgroundApplySession | undefined) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function patchApplySessionForBackground(
+  patch: Partial<BackgroundApplySession>,
+): Promise<BackgroundApplySession | null> {
+  const session = await getApplySessionForBackground();
+  if (!session) return null;
+
+  const updated: BackgroundApplySession = {
+    ...session,
+    ...patch,
+    lastUpdatedAt: Date.now(),
+  };
+  await chrome.storage.session.set({ [APPLY_SESSION_KEY]: updated });
+  return updated;
+}
+
+async function attachApplySessionToTab(tabId: number | undefined): Promise<void> {
+  if (tabId === undefined) return;
+  await patchApplySessionForBackground({ sourceTabId: tabId });
+}
+
+async function hasDynamicApplyPermission(): Promise<boolean> {
+  try {
+    return await chrome.permissions.contains({ origins: [ALL_URLS_ORIGIN] });
+  } catch {
+    return false;
+  }
+}
+
+async function ensureDynamicApplyPermission(): Promise<boolean> {
+  if (await hasDynamicApplyPermission()) return true;
+  try {
+    return await chrome.permissions.request({ origins: [ALL_URLS_ORIGIN] });
+  } catch {
+    return false;
+  }
+}
+
+async function maybeInjectDynamicAutofill(tabId: number, url: string): Promise<void> {
+  if (!isHttpUrl(url) || isKnownStaticAutofillUrl(url)) return;
+
+  const session = await getApplySessionForBackground();
+  if (!session || session.currentState === "submitted" || session.currentState === "abandoned") return;
+  if (session.sourceTabId !== undefined && session.sourceTabId !== tabId) return;
+  if (!await hasDynamicApplyPermission()) return;
+
+  const injectionKey = `${tabId}:${url}`;
+  if (lastDynamicInjection.get(tabId) === injectionKey) return;
+  lastDynamicInjection.set(tabId, injectionKey);
+
+  try {
+    const script = getPackagedAutofillScript();
+    if (!script) return;
+
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: [script],
+    });
+    await patchApplySessionForBackground({
+      currentState: "redirecting",
+      currentPortal: new URL(url).hostname,
+      currentUrl: url,
+    });
+    pushTelemetryEvent({
+      event: "dynamic_autofill_injected",
+      timestamp: new Date().toISOString(),
+      tabId,
+      url,
+    });
+  } catch {
+    // Dynamic injection is best-effort. Static known-host content scripts and
+    // manual extension flows remain untouched if this fails.
+  }
+}
+
+function getPackagedAutofillScript(): string | null {
+  try {
+    const manifest = chrome.runtime.getManifest();
+    const contentScripts = manifest.content_scripts ?? [];
+    const autofill = contentScripts.find((script) =>
+      script.matches?.includes("http://localhost:3000/demo-apply*"),
+    );
+    return autofill?.js?.[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+chrome.webNavigation.onCommitted.addListener((details) => {
+  if (details.frameId !== 0 || !details.url) return;
+  void maybeInjectDynamicAutofill(details.tabId, details.url);
+});
+
+chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
+  if (details.frameId !== 0 || !details.url) return;
+  void maybeInjectDynamicAutofill(details.tabId, details.url);
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  lastDynamicInjection.delete(tabId);
+  void (async () => {
+    const session = await getApplySessionForBackground();
+    if (session?.sourceTabId === tabId) {
+      await chrome.storage.session.remove(APPLY_SESSION_KEY);
+    }
+  })();
+});
 
 // ── Notification helpers ──────────────────────────────────────────────────────
 
@@ -402,5 +622,73 @@ async function syncApplication(payload: {
     return { success: true, data };
   } catch {
     return { error: "API unavailable — is the server running?" };
+  }
+}
+
+// ── Manual tracking ──────────────────────────────────────────────────────────
+
+async function getRecentApps() {
+  try {
+    if (!await getToken()) return null;
+    const res = await authedFetch(`${API_BASE}/api/v1/applications/?limit=8`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+async function quickTrack(
+  payload: { company: string; role: string; url?: string },
+  fromTabId?: number,
+): Promise<{ success?: boolean; data?: { id: string }; error?: string }> {
+  try {
+    if (!await getToken()) return { error: "Not signed in" };
+
+    // Resolve URL: caller may pass it, otherwise read from the originating tab
+    let url = payload.url ?? "";
+    if (!url && fromTabId !== undefined) {
+      const tab = await chrome.tabs.get(fromTabId).catch(() => null);
+      url = tab?.url ?? "";
+    }
+
+    const res = await authedFetch(`${API_BASE}/api/v1/applications/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        company: payload.company,
+        role: payload.role,
+        job_url: url || null,
+        status: "applied",
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      return { error: (err as { detail?: string }).detail ?? `HTTP ${res.status}` };
+    }
+    const data = await res.json() as { id?: string };
+    void pushNotification({
+      type: "success",
+      title: "Job tracked!",
+      body: `${payload.company} · ${payload.role} — marked Applied`,
+    });
+    return { success: true, data: data as { id: string } };
+  } catch {
+    return { error: "API unavailable — is the server running?" };
+  }
+}
+
+// ── Telemetry batch ───────────────────────────────────────────────────────────
+// Events accumulate in memory. When a backend telemetry endpoint is added
+// (Sprint 4), this buffer will be flushed periodically. Until then, events
+// are available in-memory for debugging.
+const MAX_TELEMETRY_BATCH = 100;
+const _telemetryBatch: Record<string, unknown>[] = [];
+
+function pushTelemetryEvent(event: Record<string, unknown>): void {
+  _telemetryBatch.push(event);
+  // Rolling window — drop oldest when buffer fills
+  if (_telemetryBatch.length > MAX_TELEMETRY_BATCH) {
+    _telemetryBatch.shift();
   }
 }

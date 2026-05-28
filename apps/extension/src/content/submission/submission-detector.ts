@@ -2,12 +2,16 @@
  * Combines network + DOM signals to decide whether an application was submitted.
  *
  * Confidence model:
- *   network only (0.6)  → "Did you apply?" suggestion toast (no auto-advance)
- *   DOM only    (0.75+) → auto-advance to "applied"
- *   network+DOM (0.95)  → auto-advance to "applied" with high confidence
+ *   network only   (0.60) → "Did you apply?" suggestion toast (no auto-advance)
+ *   DOM text/elem  (0.75) → "Did you apply?" suggestion toast (no auto-advance)
+ *   URL pattern    (0.80) → auto-advance to "applied" (unambiguous success URL)
+ *   network+DOM    (0.93–0.95) → auto-advance with high confidence
  *
- * AUTO_ADVANCE_THRESHOLD (0.72) sits between the two tiers so that DOM signals
- * always trigger auto-advance while network-only signals never do.
+ * AUTO_ADVANCE_THRESHOLD (0.80) prevents false positives where the source portal
+ * briefly shows "Application submitted! Redirecting…" text before sending the
+ * user to an external ATS form (Instahyre, Workday, etc.). DOM-text signals
+ * alone (0.75) are no longer sufficient for auto-advance — only an explicit
+ * success URL or combined network+DOM signal crosses the threshold.
  */
 
 import { startNetworkDetector, type NetworkSignal } from "./network-detector";
@@ -21,7 +25,7 @@ export type SubmissionEvent = {
   atsMetadata: Record<string, unknown>;
 };
 
-const AUTO_ADVANCE_THRESHOLD = 0.72;
+const AUTO_ADVANCE_THRESHOLD = 0.80;
 const SUGGEST_THRESHOLD = 0.55;
 
 export function startSubmissionDetector(

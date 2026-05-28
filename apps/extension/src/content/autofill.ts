@@ -1,6 +1,10 @@
 import { scanFields } from "./field-detector";
 import { showSignInPanel } from "./signin-panel";
 import type { DetectedField, FieldMatch } from "@applyflow/shared";
+import { clearApplySession, createApplySession, getApplySession, updateApplySession, type ApplySession } from "./runtime/application-session";
+import { injectAssistant, updateAssistantStatus, destroyAssistant, isAssistantActive } from "./shared/application-assistant";
+import { computeStepHash, markStepCompleted } from "./runtime/form-step-manager";
+import { startSubmissionDetector, type SubmissionEvent } from "./submission/submission-detector";
 
 const AF_ID = "applyflow-autofill";
 
@@ -681,6 +685,179 @@ function renderSuccessPanel(
   return panel;
 }
 
+// ── In-page track prompt (Phase 0) ───────────────────────────────────────────
+// Shown when user clicks the badge but has no tracking context.
+// Lets them link to an existing application or quick-add a new one.
+
+type RecentAppEntry = {
+  id: string; company: string; role: string;
+  status: string; applied_at: string; job_url: string | null;
+};
+
+const STATUS_COLOR: Record<string, string> = {
+  saved: "#3b82f6", applied: "#6366f1", screening: "#6366f1",
+  interview: "#f59e0b", technical: "#f59e0b",
+  offer: "#10b981", rejected: "#ef4444",
+};
+const STATUS_LABEL: Record<string, string> = {
+  saved: "Saved", applied: "Applied", screening: "Applied",
+  interview: "Interview", technical: "Interview",
+  offer: "Offer", rejected: "Rejected",
+};
+
+async function fetchRecentApps(): Promise<RecentAppEntry[]> {
+  return new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage({ type: "GET_RECENT_APPS" }, (result) => {
+        if (chrome.runtime.lastError || !result?.applications) { resolve([]); return; }
+        resolve((result.applications as RecentAppEntry[]).slice(0, 6));
+      });
+    } catch { resolve([]); }
+  });
+}
+
+async function quickTrackApp(company: string, role: string): Promise<RecentAppEntry | null> {
+  return new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage(
+        { type: "QUICK_TRACK", payload: { company, role, url: window.location.href } },
+        (result: { success?: boolean; data?: RecentAppEntry } | null) => {
+          if (chrome.runtime.lastError || !result?.success) { resolve(null); return; }
+          resolve(result.data ?? null);
+        },
+      );
+    } catch { resolve(null); }
+  });
+}
+
+async function linkAppToSession(app: RecentAppEntry): Promise<void> {
+  const existing = await getApplySession();
+  if (existing) {
+    await updateApplySession({ applicationId: app.id, currentState: "form_detected" });
+  } else {
+    await createApplySession({
+      applicationId: app.id,
+      fingerprintHash: "",
+      sourcePortal: window.location.hostname,
+      tailoredResumeId: undefined,
+    });
+  }
+  activeSession = await getApplySession();
+}
+
+function renderTrackPromptPanel(
+  onProceed: () => void, // called after link/track/skip
+  onClose: () => void,
+): HTMLElement {
+  const panel = document.createElement("div");
+  panel.id = `${AF_ID}-panel`;
+
+  // Loading state while we fetch apps
+  panel.innerHTML = `
+    <div class="af-header">
+      <div>
+        <div class="af-title-text">⚡ ApplyFlow — Track This Form</div>
+        <div class="af-subtitle">Which job are you applying for?</div>
+      </div>
+      <span class="af-x">✕</span>
+    </div>
+    <div class="af-loading">
+      <div class="af-spinner"></div>
+      <span>Loading your applications…</span>
+    </div>
+  `;
+  panel.querySelector(".af-x")?.addEventListener("click", onClose);
+
+  void fetchRecentApps().then((apps) => {
+    const recentRows = apps.map((app) => {
+      const color = STATUS_COLOR[app.status] ?? "#6b7280";
+      const label = STATUS_LABEL[app.status] ?? app.status;
+      return `
+        <div class="af-detect-row" id="tp-app-${app.id}"
+          style="cursor:pointer; padding:9px 14px; align-items:flex-start; gap:10px;">
+          <div style="flex:1; min-width:0;">
+            <div style="font-size:12px; font-weight:600; color:#f0f0ff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${app.company}</div>
+            <div style="font-size:11px; color:#9ca3af; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${app.role}</div>
+          </div>
+          <span class="af-badge" style="background:${color}22; color:${color}; border-color:${color}55; flex-shrink:0;">${label}</span>
+        </div>
+      `;
+    }).join("");
+
+    panel.innerHTML = `
+      <div class="af-header">
+        <div>
+          <div class="af-title-text">⚡ ApplyFlow — Track This Form</div>
+          <div class="af-subtitle">Which job are you applying for?</div>
+        </div>
+        <span class="af-x">✕</span>
+      </div>
+      <div class="af-field-list">
+        ${apps.length > 0 ? `
+          <div style="padding:8px 14px 2px; font-size:10px; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:0.05em;">
+            Recent applications — click to link
+          </div>
+          ${recentRows}
+          <div style="margin:6px 14px; height:1px; background:rgba(255,255,255,0.08);"></div>
+        ` : ""}
+        <div style="padding:${apps.length ? "8" : "12"}px 14px 2px; font-size:10px; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:0.05em;">
+          Track as new job
+        </div>
+        <div style="padding:6px 14px 12px; display:flex; flex-direction:column; gap:8px;">
+          <input id="tp-company" class="af-review-input" placeholder="Company name" />
+          <input id="tp-role"    class="af-review-input" placeholder="Role / job title" />
+          <button class="af-btn af-btn-primary" id="tp-track-btn" disabled>
+            Track as new job →
+          </button>
+        </div>
+      </div>
+      <div class="af-footer">
+        <button class="af-btn af-btn-secondary" id="tp-skip-btn">
+          Skip → just autofill without tracking
+        </button>
+      </div>
+    `;
+
+    panel.querySelector(".af-x")?.addEventListener("click", onClose);
+
+    // Link to existing app
+    apps.forEach((app) => {
+      panel.querySelector(`#tp-app-${app.id}`)?.addEventListener("click", async () => {
+        const btn = panel.querySelector<HTMLButtonElement>(`#tp-app-${app.id}`);
+        if (btn) btn.style.opacity = "0.5";
+        await linkAppToSession(app);
+        onProceed();
+      });
+    });
+
+    // Quick-add new
+    const companyEl = panel.querySelector<HTMLInputElement>("#tp-company");
+    const roleEl    = panel.querySelector<HTMLInputElement>("#tp-role");
+    const trackBtn  = panel.querySelector<HTMLButtonElement>("#tp-track-btn");
+
+    function syncBtn() {
+      if (trackBtn) trackBtn.disabled = !(companyEl?.value.trim() && roleEl?.value.trim());
+    }
+    companyEl?.addEventListener("input", syncBtn);
+    roleEl?.addEventListener("input", syncBtn);
+
+    trackBtn?.addEventListener("click", async () => {
+      const company = companyEl?.value.trim() ?? "";
+      const role    = roleEl?.value.trim()    ?? "";
+      if (!company || !role) return;
+      if (trackBtn) { trackBtn.disabled = true; trackBtn.textContent = "Saving…"; }
+      const newApp = await quickTrackApp(company, role);
+      if (newApp) await linkAppToSession(newApp);
+      onProceed();
+    });
+
+    // Skip — proceed without tracking
+    panel.querySelector("#tp-skip-btn")?.addEventListener("click", onProceed);
+  });
+
+  return panel;
+}
+
 // ── Orchestration ─────────────────────────────────────────────────────────────
 
 function closeAll() {
@@ -706,11 +883,24 @@ function swapPanel(next: HTMLElement) {
   document.body.appendChild(next);
 }
 
-async function openPanel(fields: DetectedField[]) {
+async function openPanel(fields: DetectedField[], _skipTrackPrompt = false) {
   const session = await new Promise<{ token?: string } | null>((resolve) => {
     chrome.runtime.sendMessage({ type: "GET_SESSION" }, resolve);
   });
   const loggedIn = !!session?.token;
+
+  // Phase 0: If the user is logged in but there's no tracking context, show the
+  // track prompt so they can link or quick-add before filling.
+  // Skipped on LinkedIn (session is managed by portal-runner), when already
+  // tracked via session, and when the user explicitly chose to skip.
+  const needsTrackPrompt = loggedIn && !activeSession && !IS_LINKEDIN && !_skipTrackPrompt;
+  if (needsTrackPrompt) {
+    swapPanel(renderTrackPromptPanel(
+      () => void openPanel(fields, true), // after link/track/skip: re-open without prompt
+      closePanel,
+    ));
+    return;
+  }
 
   swapPanel(
     renderDetectionPanel(
@@ -745,8 +935,29 @@ async function openPanel(fields: DetectedField[]) {
         );
 
         const matches: FieldMatch[] = response?.matches ?? [];
-        const resumeId: string | null = (response as { resume_id?: string | null })?.resume_id ?? null;
-        const resumeName: string | null = (response as { resume_name?: string | null })?.resume_name ?? null;
+        let resumeId: string | null = (response as { resume_id?: string | null })?.resume_id ?? null;
+        let resumeName: string | null = (response as { resume_name?: string | null })?.resume_name ?? null;
+
+        // Session resume fallback: when the backend couldn't find a tailored
+        // resume by URL (cross-portal redirect, different domain), use the one
+        // the apply session carried over from the originating job page.
+        if (!resumeId && !sessionResumeId) {
+          // Quick check for late-arriving session (LinkedIn Easy Apply case —
+          // session is created by interceptor AFTER page load)
+          try {
+            const s = await getApplySession();
+            if (s?.tailoredResumeId) {
+              activeSession   = s;
+              sessionResumeId = s.tailoredResumeId;
+            }
+          } catch { /* non-blocking */ }
+        }
+        if (!resumeId && sessionResumeId) {
+          resumeId   = sessionResumeId;
+          resumeName = "Tailored Resume";
+        }
+
+        updateAssistantStatus("autofill_ready");
 
         // Phase 4: review sidebar
         swapPanel(
@@ -763,7 +974,14 @@ async function openPanel(fields: DetectedField[]) {
 
               // Phase 5: actually fill
               swapPanel(renderLoadingPanel("Filling fields…", closePanel));
+              updateAssistantStatus("filling");
+              void updateApplySession({ currentState: "filling" });
+
               const { filled, skipped } = await fillFields(confirmed, rId);
+
+              // Track step completion for form-step manager
+              markStepCompleted(computeStepHash([...known, ...unknownForAI]), [...known, ...unknownForAI]);
+              if (filled > 0) updateAssistantStatus("autofill_ready");
 
               // Offer to save any field the user had to type manually (source !== "rules",
               // not a file, has a real label) — covers unknown AND known-kind fields
@@ -799,6 +1017,85 @@ async function openPanel(fields: DetectedField[]) {
       closePanel,
     ),
   );
+}
+
+// ── Apply Session integration ─────────────────────────────────────────────────
+// These are populated asynchronously at startup and used throughout the module.
+// If session lookup fails, autofill continues to work exactly as before.
+
+let activeSession: ApplySession | null = null;
+// Resume ID from apply session — used as fallback when backend doesn't find one
+// (e.g. cross-portal redirect where job_url on the new domain doesn't match).
+let sessionResumeId: string | null = null;
+let stopApplicationDetector: (() => void) | null = null;
+
+function stopActiveApplicationRuntime(): void {
+  stopApplicationDetector?.();
+  stopApplicationDetector = null;
+  activeSession = null;
+  sessionResumeId = null;
+  destroyAssistant();
+}
+
+function startApplicationSubmissionDetector(session: ApplySession): void {
+  if (!session.applicationId || stopApplicationDetector) return;
+
+  stopApplicationDetector = startSubmissionDetector(
+    session.applicationId,
+    (event: SubmissionEvent) => {
+      // Runtime transition: active application reached a high-confidence submit
+      // signal. Keep normal autofill state isolated, then clear only the
+      // ephemeral apply session after the assistant has shown completion.
+      void updateApplySession({ currentState: "submitted" });
+      updateAssistantStatus("submitted");
+      chrome.runtime.sendMessage({
+        type: "UPDATE_APP_STATUS",
+        payload: { id: session.applicationId, status: "applied", atsMetadata: event.atsMetadata },
+      });
+      setTimeout(() => {
+        stopActiveApplicationRuntime();
+        void clearApplySession();
+      }, 3000);
+    },
+    () => {
+      // Suggestion-only signals are intentionally non-invasive in application
+      // mode; the existing manual badge remains available for the user.
+    },
+  );
+}
+
+async function initApplySessionContext(): Promise<void> {
+  try {
+    // Quick first check — usually the session is already written by the interceptor
+    let session = await getApplySession();
+
+    // If not found immediately, wait briefly: covers the race where this page
+    // loaded before chrome.storage.session.set() completed on the previous page.
+    if (!session) {
+      await new Promise<void>((r) => setTimeout(r, 400));
+      session = await getApplySession();
+    }
+
+    if (!session) return; // No active apply journey — normal autofill flow
+
+    activeSession    = session;
+    sessionResumeId  = session.tailoredResumeId ?? null;
+    startApplicationSubmissionDetector(session);
+
+    // Tell the session we landed on a form page
+    await updateApplySession({
+      currentState: "form_detected",
+      currentPortal: window.location.hostname,
+      currentUrl:    window.location.href,
+    });
+
+    // Runtime transition: session context is now active in this content script.
+    // Re-run scanning once because the initial scan may have completed before
+    // chrome.storage.session became readable on fast redirects.
+    run();
+  } catch {
+    // Graceful degradation — autofill works normally with no session context
+  }
 }
 
 // ── LinkedIn guard ────────────────────────────────────────────────────────────
@@ -861,6 +1158,7 @@ function run() {
 
   const fieldsKey = getFieldsKey([...known, ...unknownActionable]);
   const panelOpen = !!document.getElementById(`${AF_ID}-panel`);
+  const needsAssistant = !!activeSession && !IS_LINKEDIN && !isAssistantActive();
 
   // User explicitly dismissed this field-set — don't re-show on the same step
   if (dismissedKeys.has(fieldsKey)) return;
@@ -869,12 +1167,24 @@ function run() {
     // After a fill, hold back the badge until the form actually moves to a new step
     if (fieldsKey === lastFilledKey) return;
     waitingForNextStep = false; // new step detected — fall through to show badge
-  } else if (fieldsKey === currentFieldsKey && !panelOpen) {
+  } else if (fieldsKey === currentFieldsKey && !panelOpen && !needsAssistant) {
     return; // nothing changed, panel not open
   }
 
-  currentFieldsKey = fieldsKey;
+  currentFieldsKey  = fieldsKey;
   currentKnownCount = actionableCount;
+
+  // Show assistant when an apply session is active and we've found real fields.
+  // Skipped on LinkedIn (modal flow handled separately) and when already visible.
+  if (activeSession && !IS_LINKEDIN && !isAssistantActive()) {
+    injectAssistant(
+      activeSession,
+      sessionResumeId ? "resume_ready" : "fields_detected",
+      actionableCount,
+    );
+  } else if (activeSession && isAssistantActive()) {
+    updateAssistantStatus("fields_detected", actionableCount);
+  }
 
   injectStyles();
 
@@ -894,6 +1204,12 @@ function run() {
   });
 }
 
+// Start apply-session lookup in parallel with the first field scan.
+// If no session exists the function returns quickly (< 5ms overhead).
+// If one exists, sessionResumeId and activeSession are set before the user
+// can click the badge — the critical path for resume continuity.
+void initApplySessionContext();
+
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", run);
 } else {
@@ -911,4 +1227,16 @@ observer.observe(document.body, {
   subtree: true,
   attributes: true,
   attributeFilter: ["aria-hidden", "hidden", "data-step", "data-active", "aria-expanded", "aria-selected"],
+});
+
+chrome.storage?.onChanged?.addListener((changes, areaName) => {
+  if (areaName !== "session" || !changes["af_apply_session"]) return;
+  if (!changes["af_apply_session"].newValue) {
+    stopActiveApplicationRuntime();
+  }
+});
+
+window.addEventListener("pagehide", () => {
+  stopApplicationDetector?.();
+  stopApplicationDetector = null;
 });

@@ -4,9 +4,13 @@ import { injectOverlay, type AppRecord } from "./overlay";
 import { waitForStableDOM } from "../runtime/dom-stability";
 import { scrapeWithRetries } from "../runtime/runtime-manager";
 import { buildFingerprint } from "../tracking/fingerprint";
-import { setSession, setApplicationId, setStopDetector, clearSession } from "../runtime/session-manager";
+import { setSession, getSession, setApplicationId, setStopDetector, clearSession } from "../runtime/session-manager";
 import { startSubmissionDetector, type SubmissionEvent } from "../submission/submission-detector";
 import { aiExtractJobData } from "../runtime/ai-extractor";
+import { runtimeState, RuntimeState } from "../runtime/runtime-state";
+import { track } from "../telemetry/tracker";
+import { startApplyInterceptor } from "../runtime/apply-interceptor";
+import { updateApplySession, clearApplySession } from "../runtime/application-session";
 
 // ── Adapter interface ─────────────────────────────────────────────────────────
 
@@ -31,6 +35,13 @@ export interface JobPortalAdapter {
    * e.g. "currentJobId" for LinkedIn, "jk" for Indeed.
    */
   scrapeUrlParam?: string;
+  /**
+   * Optional: confidence-based page detection.
+   * When provided, the runner uses this INSTEAD of isJobPage() — return
+   * confidence >= 0.7 to proceed, < 0.7 to skip. Existing adapters that only
+   * implement isJobPage() continue to work with no changes required.
+   */
+  detectPageConfidence?(): { confidence: number; signals: string[] };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -68,8 +79,12 @@ function flushPendingToast() {
 function attachDetector(appId: string, company: string, role: string) {
   const stop = startSubmissionDetector(
     appId,
-    // High-confidence: auto-advance to "applied"
+    // High-confidence: auto-advance to "applied" and mark apply session submitted
     (event: SubmissionEvent) => {
+      // Update apply session state — fire-and-forget
+      void updateApplySession({ currentState: "submitted" });
+      runtimeState.transition(RuntimeState.SUBMITTED);
+
       chrome.runtime.sendMessage(
         {
           type: "UPDATE_APP_STATUS",
@@ -84,6 +99,8 @@ function attachDetector(appId: string, company: string, role: string) {
             undefined,
             5000,
           );
+          // Clear session after a short delay so the assistant UI can show "submitted"
+          setTimeout(() => void clearApplySession(), 3000);
         },
       );
     },
@@ -113,6 +130,9 @@ function attachDetector(appId: string, company: string, role: string) {
 
 // ── Core init ─────────────────────────────────────────────────────────────────
 
+// Module-level interceptor cleanup — one interceptor per tab, replaced on each job
+let stopInterceptor: (() => void) | null = null;
+
 // Monotonically increasing counter. Every runInit call claims a unique ID.
 // Any async callback that finds its ID no longer current silently aborts —
 // this is the only guard needed against concurrent-runInit race conditions
@@ -121,23 +141,41 @@ let currentRunId = 0;
 
 async function runInit(adapter: JobPortalAdapter): Promise<void> {
   if (!isExtensionValid()) return;
-  if (!adapter.isJobPage()) return;
+
+  // Support optional confidence-based detection alongside the boolean isJobPage().
+  // Existing adapters that only implement isJobPage() continue to work unchanged.
+  if (adapter.detectPageConfidence) {
+    const { confidence } = adapter.detectPageConfidence();
+    if (confidence < 0.7) return;
+  } else if (!adapter.isJobPage()) {
+    return;
+  }
+
+  // Hoist portal name so state transitions and telemetry can reference it
+  // throughout the function — previously this was computed later.
+  const portal = adapter.portalName.toLowerCase().replace(/\s+/g, "_");
 
   // Claim this run — any in-flight runInit that fires a callback after this
   // point will see its id !== currentRunId and abort before touching the DOM.
   const runId = ++currentRunId;
 
+  runtimeState.transition(RuntimeState.DETECTING, portal);
+
+  // Stop any apply interceptor from the previous job before starting fresh
+  if (stopInterceptor) { stopInterceptor(); stopInterceptor = null; }
+
   // Remove stale overlay immediately so the user never sees the wrong job
   // while we wait for the new page to settle.
   clearSession();
   document.getElementById("applyflow-overlay")?.remove();
-
   flushPendingToast();
 
+  runtimeState.transition(RuntimeState.STABILIZING);
   // Wait for the DOM to stop mutating rather than sleeping a fixed 1500ms.
   await waitForStableDOM({ stableWindow: 600, timeout: 5000 });
   if (runId !== currentRunId) return; // newer navigation started — abort
 
+  runtimeState.transition(RuntimeState.EXTRACTING);
   // Retry up to 3 times (1s, 2s backoff) — handles portals where the first
   // scrape attempt catches the page mid-render.
   // scrapeUrlParam validates the result is for the current job, not stale DOM.
@@ -148,11 +186,11 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
 
   // AI fallback — when every DOM scrape attempt fails (portal changed its
   // layout, React still loading, selector mismatch), ask Claude to extract
-  // job data from the page's raw text. This keeps the extension working even
-  // after a portal redesign without requiring a code deployment.
-  const portal = adapter.portalName.toLowerCase().replace(/\s+/g, "_");
+  // job data from the page's raw text.
   let extractionMethod = "dom";
   if (!result && runId === currentRunId) {
+    runtimeState.transition(RuntimeState.AI_RECOVERING);
+    track("ai_recovery_triggered", { portal });
     const aiJobData = await aiExtractJobData(portal);
     if (aiJobData && runId === currentRunId) {
       result = { jobData: aiJobData, attempts: -1 };
@@ -160,8 +198,15 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
     }
   }
 
-  if (!result || runId !== currentRunId) return;
+  if (!result || runId !== currentRunId) {
+    runtimeState.transition(RuntimeState.FAILED);
+    track("job_scrape_failed", { portal });
+    return;
+  }
 
+  track("job_scrape_success", { portal, extractionMethod, attempts: result.attempts });
+
+  runtimeState.transition(RuntimeState.FINGERPRINTING);
   const { jobData } = result;
   const fingerprint = await buildFingerprint(portal, jobData);
   if (runId !== currentRunId) return;
@@ -169,6 +214,7 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
   // Anchor session to this job — detector and overlay share this context
   setSession({ jobData, fingerprint });
 
+  runtimeState.transition(RuntimeState.RESOLVING);
   try {
     chrome.runtime.sendMessage(
       {
@@ -203,10 +249,35 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
               } as ExtensionMessage);
             }
 
-            injectOverlay(score, jobData, existing ?? null, fingerprint, (appId) => {
-              // Called when user saves a new job — start detector for the new app
+            // Mutable ref: onAppSaved updates this so the overlay guard can
+            // re-inject with the correct tracked state after a user saves a job.
+            let currentExisting: AppRecord = existing ?? null;
+
+            const onAppSaved = (appId: string) => {
+              // Build a minimal AppRecord so the re-injected overlay shows the
+              // tracked view immediately (no round-trip needed).
+              currentExisting = {
+                id: appId,
+                company: jobData.company,
+                role: jobData.title,
+                status: "saved",
+                applied_at: new Date().toISOString(),
+                has_resume: false,
+                resume_id: null,
+                ats_score: null,
+                job_url: jobData.url,
+              };
               attachDetector(appId, jobData.company, jobData.title);
-              // Record first observation for the newly tracked job
+
+              // Refresh interceptor with the real applicationId now that we have it.
+              // This ensures any apply-session created after this point carries the ID.
+              if (stopInterceptor) { stopInterceptor(); stopInterceptor = null; }
+              stopInterceptor = startApplyInterceptor({
+                fingerprint,
+                applicationId: appId,
+                tailoredResumeId: null, // no tailored resume yet — user just saved
+                sourcePortal: portal,
+              });
               chrome.runtime.sendMessage({
                 type: "RECORD_OBSERVATION",
                 payload: {
@@ -217,7 +288,40 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
                   signals: { score, attempts: result!.attempts },
                 },
               } as ExtensionMessage);
+            };
+
+            injectOverlay(score, jobData, existing ?? null, fingerprint, onAppSaved);
+            runtimeState.transition(existing?.id ? RuntimeState.TRACKING : RuntimeState.READY);
+            track("overlay_injected", { portal, score, hasExisting: !!existing?.id });
+
+            // Start apply interceptor so we can follow the user across portals.
+            // Runs on the job listing page; persists session to chrome.storage.session
+            // before any redirect fires. Safe to start even for untracked jobs.
+            stopInterceptor = startApplyInterceptor({
+              fingerprint,
+              applicationId: existing?.id ?? "",
+              tailoredResumeId: existing?.resume_id ?? null,
+              sourcePortal: portal,
             });
+
+            // Overlay guard: some SPA portals (LinkedIn, Glassdoor) re-render
+            // their job panel and silently remove injected DOM nodes. If our
+            // overlay element is removed externally, re-inject it using the
+            // most up-to-date state. The observer disconnects itself on first
+            // trigger and does NOT restart — this prevents any re-inject loop.
+            const heartbeatRunId = runId;
+            const guardObserver = new MutationObserver(() => {
+              if (heartbeatRunId !== currentRunId || !getSession()) {
+                guardObserver.disconnect();
+                return;
+              }
+              if (!document.getElementById("applyflow-overlay")) {
+                guardObserver.disconnect();
+                track("overlay_reinjected", { portal });
+                injectOverlay(score, jobData, currentExisting, fingerprint, onAppSaved);
+              }
+            });
+            guardObserver.observe(document.body, { childList: true });
           },
         );
       },
