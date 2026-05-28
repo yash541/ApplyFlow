@@ -221,13 +221,25 @@ async def match_fields(
             # Queue for AI
             ai_fields.append(field)
         else:
-            matches.append(FieldMatchOut(
-                uid=field.uid,
-                kind=field.kind,
-                value=None,
-                source="none",
-                confidence=0.0,
-            ))
+            # For known-kind fields with no profile value, check learned_fields by label
+            # (e.g. website / salary the user saved from a previous manual fill).
+            norm = field.label.strip().lower()
+            if norm and norm not in ("(no label)",) and norm in learned:
+                matches.append(FieldMatchOut(
+                    uid=field.uid,
+                    kind=field.kind,
+                    value=learned[norm],
+                    source="rules",
+                    confidence=0.8,
+                ))
+            else:
+                matches.append(FieldMatchOut(
+                    uid=field.uid,
+                    kind=field.kind,
+                    value=None,
+                    source="none",
+                    confidence=0.0,
+                ))
 
     # Pass 2: AI for summary / unknown fields
     # Always emit a match entry for every ai_field so the review panel shows them

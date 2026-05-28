@@ -502,7 +502,7 @@ function renderReviewSidebar(
     const sourceBadge =
       item.source === "ai"    ? `<span class="af-badge af-badge-ai">AI</span>` :
       item.source === "rules" ? `<span class="af-badge af-badge-rules">Profile</span>` :
-                                `<span class="af-badge af-badge-none">—</span>`;
+                                `<span class="af-badge af-badge-none">Manual</span>`;
     const hasResumeToAttach = isFile && !!resumeId;
     const inputEl = isFile
       ? hasResumeToAttach
@@ -765,10 +765,17 @@ async function openPanel(fields: DetectedField[]) {
               swapPanel(renderLoadingPanel("Filling fields…", closePanel));
               const { filled, skipped } = await fillFields(confirmed, rId);
 
-              // Offer to save unknown fields that aren't already in the profile —
-              // covers both AI-generated values and values the user typed manually.
+              // Offer to save any field the user had to type manually (source !== "rules",
+              // not a file, has a real label) — covers unknown AND known-kind fields
+              // that aren't yet in the profile (e.g. website, salary).
               const learnedItems: LearnedItem[] = confirmed
-                .filter((i) => i.kind === "unknown" && i.source !== "rules" && i.value.trim() !== "")
+                .filter((i) =>
+                  i.source !== "rules" &&
+                  i.kind !== "resume_file" &&
+                  i.value.trim() !== "" &&
+                  i.label.trim() !== "" &&
+                  i.label !== "(no label)",
+                )
                 .map((i) => ({ label: i.label, value: i.value.trim() }));
 
               swapPanel(renderSuccessPanel(
