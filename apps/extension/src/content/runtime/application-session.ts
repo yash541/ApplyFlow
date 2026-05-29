@@ -34,6 +34,9 @@ export type ApplySession = {
   // Set by the background dynamic-injection router. Optional keeps this
   // backward compatible with sessions created before the router is available.
   sourceTabId?: number;
+  // Human-readable job context — stored on link so all panels can display it.
+  company?: string;
+  role?: string;
 };
 
 // ── Storage helpers ───────────────────────────────────────────────────────────
@@ -51,7 +54,7 @@ function getStorage(): typeof chrome.storage.session | null {
 export async function createApplySession(
   params: Pick<
     ApplySession,
-    "applicationId" | "fingerprintHash" | "sourcePortal" | "tailoredResumeId"
+    "applicationId" | "fingerprintHash" | "sourcePortal" | "tailoredResumeId" | "company" | "role"
   >,
 ): Promise<ApplySession | null> {
   const storage = getStorage();
@@ -65,6 +68,8 @@ export async function createApplySession(
     sourcePortal: params.sourcePortal,
     currentPortal: params.sourcePortal,
     tailoredResumeId: params.tailoredResumeId,
+    company: params.company,
+    role: params.role,
     startedAt: now,
     currentState: "starting",
     currentUrl: window.location.href,

@@ -180,21 +180,47 @@ export function ResumeUploader() {
 
       {(prefillCompany || prefillRole) && (
         <p className="text-label-sm text-primary/80">
-          ⚡ From LinkedIn: <strong>{prefillRole}</strong> at <strong>{prefillCompany}</strong>
+          ⚡ Tailoring for: <strong>{prefillRole}</strong>{prefillCompany ? ` at ${prefillCompany}` : ""}
         </p>
       )}
 
       <div className="space-y-3">
         <p className="text-label-md font-semibold text-on-surface">Job Description</p>
+
+        {/* Show prompt when arrived from extension but JD is missing/empty */}
+        {(prefillCompany || prefillRole) && !jobDesc.trim() && (
+          <div className="flex items-start gap-3 px-3 py-3 rounded-xl bg-amber-500/10 border border-amber-500/30 animate-fade-in">
+            <span className="text-amber-400 text-base shrink-0 mt-0.5">⚠️</span>
+            <div>
+              <p className="text-label-sm font-semibold text-amber-300">Job description missing</p>
+              <p className="text-label-sm text-on-surface-variant/70 mt-0.5">
+                Paste the job description below so the AI can tailor your resume to this specific role.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Tip when JD has content — encourage precision for better AI output */}
+        {jobDesc.trim().length > 0 && (
+          <div className="flex items-start gap-3 px-3 py-2.5 rounded-xl bg-primary/10 border border-primary/20">
+            <span className="text-primary text-sm shrink-0 mt-0.5">💡</span>
+            <p className="text-label-sm text-on-surface-variant/70">
+              For best tailoring results, make sure the description includes specific skills, responsibilities, and requirements — not just a summary.
+            </p>
+          </div>
+        )}
+
         <textarea
           value={jobDesc}
           onChange={(e) => setJobDesc(e.target.value)}
           placeholder="Paste job description here..."
           rows={5}
-          className="w-full px-3 py-2.5 rounded-lg bg-surface-container border border-outline-variant/40
-                     text-body-sm text-on-surface placeholder:text-on-surface-variant/40
-                     focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20
-                     resize-none transition-all"
+          className={`w-full px-3 py-2.5 rounded-lg bg-surface-container text-body-sm text-on-surface
+                     placeholder:text-on-surface-variant/40 focus:outline-none resize-none transition-all
+                     ${(prefillCompany || prefillRole) && !jobDesc.trim()
+                       ? "border border-amber-500/50 focus:border-amber-400/70 focus:ring-1 focus:ring-amber-400/20"
+                       : "border border-outline-variant/40 focus:border-primary/40 focus:ring-1 focus:ring-primary/20"
+                     }`}
         />
         <Button
           variant="primary"

@@ -4,6 +4,7 @@ import type { DetectedField, FieldMatch } from "@applyflow/shared";
 import { clearApplySession, createApplySession, getApplySession, updateApplySession, type ApplySession } from "./runtime/application-session";
 import { injectAssistant, updateAssistantStatus, destroyAssistant, isAssistantActive } from "./shared/application-assistant";
 import { computeStepHash, markStepCompleted } from "./runtime/form-step-manager";
+import { showActivateBanner, hideActivateBanner, isActivateBannerVisible } from "./shared/activate-banner";
 import { startSubmissionDetector, type SubmissionEvent } from "./submission/submission-detector";
 
 const AF_ID = "applyflow-autofill";
@@ -185,6 +186,29 @@ function injectStyles() {
     .af-stat-label { font-size: 10px; color: #6b7280; margin-top: 2px; }
 
     .af-note { font-size: 11px; color: #4b5563; text-align: center; }
+
+    .af-linked-job {
+      display: flex; align-items: center; gap: 6px; margin-top: 3px;
+    }
+    .af-linked-label {
+      font-size: 11px; color: #a5b4fc;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px;
+    }
+    .af-relink-btn {
+      display: inline-flex; align-items: center; gap: 3px;
+      background: rgba(99,102,241,0.12); border: 1px solid rgba(99,102,241,0.3);
+      border-radius: 20px; cursor: pointer; padding: 2px 8px;
+      font-size: 10px; color: #a5b4fc; font-family: inherit; font-weight: 600;
+      transition: background 0.15s, color 0.15s; flex-shrink: 0;
+    }
+    .af-relink-btn:hover { background: rgba(99,102,241,0.22); color: #c7d2fe; }
+    .af-tailor-btn {
+      background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.25);
+      border-radius: 9px; color: #a5b4fc; font-size: 12px; font-weight: 600;
+      cursor: pointer; padding: 8px 14px; width: 100%;
+      font-family: inherit; transition: background 0.15s;
+    }
+    .af-tailor-btn:hover { background: rgba(99,102,241,0.18); }
 
     .af-learn-prompt {
       margin: 0 14px 4px;
@@ -427,6 +451,7 @@ function renderDetectionPanel(
       <div>
         <div class="af-title-text">⚡ ApplyFlow</div>
         <div class="af-subtitle">${known.length} classified · ${unknownWithLabel.length} AI-fill · ${fields.length} total</div>
+        ${linkedJobHtml()}
       </div>
       <span class="af-x">✕</span>
     </div>
@@ -446,6 +471,10 @@ function renderDetectionPanel(
 
   panel.querySelector(".af-x")?.addEventListener("click", onClose);
   panel.querySelector(`#${AF_ID}-match-btn`)?.addEventListener("click", onMatch);
+  attachRelinkListener(panel, () => {
+    // Swap inline to track prompt; on any selection re-open detection panel
+    swapPanel(renderTrackPromptPanel(() => void openPanel(fields, true), onClose));
+  });
   panel.querySelector(`#${AF_ID}-signin-btn`)?.addEventListener("click", () => {
     onClose();
     showSignInPanel(() => void openPanel(fields));
@@ -534,11 +563,14 @@ function renderReviewSidebar(
 
   const withValue = items.filter((i) => i.value || (i.kind === "resume_file" && !!resumeId)).length;
 
+  const hasResume = !!resumeId;
+
   panel.innerHTML = `
     <div class="af-header">
       <div>
         <div class="af-title-text">⚡ ApplyFlow — Review & Fill</div>
         <div class="af-subtitle">${hostname}</div>
+        ${linkedJobHtml()}
       </div>
       <span class="af-x">✕</span>
     </div>
@@ -551,6 +583,11 @@ function renderReviewSidebar(
           <div class="af-legend-item"><div class="af-legend-dot" style="background:#c084fc"></div>AI</div>
         </div>
       </div>
+      ${activeSession?.applicationId ? `
+        <button class="af-tailor-btn" id="${AF_ID}-tailor-btn">
+          ✨ ${hasResume ? "Re-tailor resume for this job" : "Tailor resume for this job"}
+        </button>
+      ` : ""}
       <button class="af-btn af-btn-primary" id="${AF_ID}-fill-btn" ${withValue === 0 ? "disabled" : ""}>
         Fill ${withValue} field${withValue !== 1 ? "s" : ""} →
       </button>
@@ -558,6 +595,27 @@ function renderReviewSidebar(
   `;
 
   panel.querySelector(".af-x")?.addEventListener("click", onClose);
+  attachRelinkListener(panel, () => {
+    // Swap to track prompt; after re-linking restart from detection so
+    // GET_MATCHES runs again with the new job's resume context.
+    swapPanel(renderTrackPromptPanel(() => void openPanel(fields, true), onClose));
+  });
+
+  // Tailor resume for this job — scrapes current page text as JD
+  panel.querySelector(`#${AF_ID}-tailor-btn`)?.addEventListener("click", () => {
+    const jd = document.body.innerText.slice(0, 6000);
+    const company = activeSession?.company ?? "";
+    const role    = activeSession?.role    ?? document.title.split(/[|\-–]/)[0]?.trim() ?? "";
+    chrome.runtime.sendMessage({
+      type: "OPEN_TAILOR",
+      payload: {
+        jd,
+        company,
+        role,
+        applicationId: activeSession?.applicationId ?? undefined,
+      },
+    });
+  });
 
   panel.addEventListener("change", (e) => {
     const cb = e.target as HTMLInputElement;
@@ -685,6 +743,30 @@ function renderSuccessPanel(
   return panel;
 }
 
+// ── Linked job header row ─────────────────────────────────────────────────────
+
+function linkedJobHtml(): string {
+  if (!activeSession?.applicationId) return "";
+  const label = activeSession.company && activeSession.role
+    ? `${activeSession.company} · ${activeSession.role}`
+    : activeSession.company ?? activeSession.role ?? "Linked job";
+  return `
+    <div class="af-linked-job">
+      <span class="af-linked-label" title="${label}">🔗 ${label}</span>
+      <button class="af-relink-btn" id="${AF_ID}-relink-btn">⇄ relink</button>
+    </div>
+  `;
+}
+
+function attachRelinkListener(panel: HTMLElement, onRelink: () => void): void {
+  panel.querySelector(`#${AF_ID}-relink-btn`)?.addEventListener("click", async () => {
+    await updateApplySession({ applicationId: "", company: undefined, role: undefined });
+    if (activeSession) activeSession = { ...activeSession, applicationId: "", company: undefined, role: undefined };
+    sessionResumeId = null;
+    onRelink();
+  });
+}
+
 // ── In-page track prompt (Phase 0) ───────────────────────────────────────────
 // Shown when user clicks the badge but has no tracking context.
 // Lets them link to an existing application or quick-add a new one.
@@ -692,6 +774,7 @@ function renderSuccessPanel(
 type RecentAppEntry = {
   id: string; company: string; role: string;
   status: string; applied_at: string; job_url: string | null;
+  resume_id: string | null; has_resume: boolean;
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -731,18 +814,28 @@ async function quickTrackApp(company: string, role: string): Promise<RecentAppEn
 }
 
 async function linkAppToSession(app: RecentAppEntry): Promise<void> {
+  const resumeId = app.has_resume && app.resume_id ? app.resume_id : undefined;
+
   const existing = await getApplySession();
   if (existing) {
-    await updateApplySession({ applicationId: app.id, currentState: "form_detected" });
+    await updateApplySession({
+      applicationId: app.id,
+      tailoredResumeId: resumeId,
+      currentState: "form_detected",
+    });
   } else {
     await createApplySession({
       applicationId: app.id,
       fingerprintHash: "",
       sourcePortal: window.location.hostname,
-      tailoredResumeId: undefined,
+      tailoredResumeId: resumeId,
     });
   }
+
+  // Also store the human-readable job label for panel headers
+  await updateApplySession({ company: app.company, role: app.role });
   activeSession = await getApplySession();
+  if (resumeId) sessionResumeId = resumeId;
 }
 
 function renderTrackPromptPanel(
@@ -847,7 +940,13 @@ function renderTrackPromptPanel(
       if (!company || !role) return;
       if (trackBtn) { trackBtn.disabled = true; trackBtn.textContent = "Saving…"; }
       const newApp = await quickTrackApp(company, role);
-      if (newApp) await linkAppToSession(newApp);
+      if (newApp) {
+        await linkAppToSession(newApp);
+      } else {
+        // Track failed but still store context so panel header shows the label
+        await updateApplySession({ company, role });
+        activeSession = await getApplySession();
+      }
       onProceed();
     });
 
@@ -889,11 +988,13 @@ async function openPanel(fields: DetectedField[], _skipTrackPrompt = false) {
   });
   const loggedIn = !!session?.token;
 
-  // Phase 0: If the user is logged in but there's no tracking context, show the
-  // track prompt so they can link or quick-add before filling.
-  // Skipped on LinkedIn (session is managed by portal-runner), when already
-  // tracked via session, and when the user explicitly chose to skip.
-  const needsTrackPrompt = loggedIn && !activeSession && !IS_LINKEDIN && !_skipTrackPrompt;
+  // Phase 0: If the user is logged in and the form has no confirmed tracking
+  // context (either no session at all, or a session without an applicationId),
+  // show the track prompt so they can link to a recent job or skip.
+  // Skipped on LinkedIn (portal-runner manages session there) and after the
+  // user has already made an explicit choice (_skipTrackPrompt = true).
+  const hasTrackedContext = !!(activeSession?.applicationId);
+  const needsTrackPrompt = loggedIn && !hasTrackedContext && !IS_LINKEDIN && !_skipTrackPrompt;
   if (needsTrackPrompt) {
     swapPanel(renderTrackPromptPanel(
       () => void openPanel(fields, true), // after link/track/skip: re-open without prompt
@@ -972,6 +1073,13 @@ async function openPanel(fields: DetectedField[], _skipTrackPrompt = false) {
                 af_last_fill: { items: confirmed, url: window.location.href, timestamp: Date.now() },
               });
 
+              // Capture the step key NOW — before the fill runs and before
+              // the modal can transition to a new step (which would update
+              // currentFieldsKey while the success panel is still visible).
+              // finishFill() uses this snapshot so "Done" never accidentally
+              // suppresses the badge for the next step.
+              const filledStepKey = currentFieldsKey;
+
               // Phase 5: actually fill
               swapPanel(renderLoadingPanel("Filling fields…", closePanel));
               updateAssistantStatus("filling");
@@ -996,6 +1104,15 @@ async function openPanel(fields: DetectedField[], _skipTrackPrompt = false) {
                 )
                 .map((i) => ({ label: i.label, value: i.value.trim() }));
 
+              // Use filledStepKey (captured before fill) not currentFieldsKey
+              // (which may have advanced to a new modal step by the time the
+              // user clicks Done on the success panel).
+              const finishThisStep = () => {
+                lastFilledKey = filledStepKey;
+                waitingForNextStep = true;
+                closeAll();
+              };
+
               swapPanel(renderSuccessPanel(
                 filled,
                 skipped,
@@ -1005,9 +1122,9 @@ async function openPanel(fields: DetectedField[], _skipTrackPrompt = false) {
                     type: "SAVE_LEARNED_FIELDS",
                     payload: { fields: Object.fromEntries(items.map((i) => [i.label, i.value])) },
                   });
-                  finishFill();
+                  finishThisStep();
                 },
-                finishFill,
+                finishThisStep,
               ));
             },
             closePanel,
@@ -1129,8 +1246,25 @@ let lastFilledKey = "";         // the fingerprint of the step we just filled
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 const dismissedKeys = new Set<string>(); // field-set keys the user explicitly closed
 
+// Banner settle timer — after 3s with no detected fields, show the activate banner
+let noFieldsTimer: ReturnType<typeof setTimeout> | null = null;
+
 function getFieldsKey(fields: DetectedField[]): string {
   return fields.map((f) => f.selector).sort().join("|");
+}
+
+/**
+ * Force a fresh field scan — called by the activate banner's onClick.
+ * Resets the fields-key cache so run() re-evaluates even if the DOM
+ * hasn't changed, then waits briefly for any pending React renders.
+ * Returns true if the badge appeared (fields found), false otherwise.
+ */
+async function forceActivate(): Promise<boolean> {
+  currentFieldsKey = ""; // clear cache so run() doesn't early-exit
+  await new Promise<void>((r) => setTimeout(r, 800)); // let DOM settle
+  run();
+  await new Promise<void>((r) => setTimeout(r, 300)); // let run() render badge
+  return !!document.getElementById(`${AF_ID}-badge`);
 }
 
 function run() {
@@ -1154,7 +1288,28 @@ function run() {
     (f) => f.kind === "unknown" && f.label.trim() !== "" && f.label !== "(no label)",
   );
   const actionableCount = known.length + unknownActionable.length;
-  if (actionableCount === 0) return;
+
+  if (actionableCount === 0) {
+    // No fields detected. Start a settle timer so the banner only appears
+    // after the page has had 3 seconds to finish rendering — avoids flashing
+    // the banner on pages that are still loading or transitioning.
+    if (!IS_LINKEDIN && !noFieldsTimer && !isActivateBannerVisible()
+        && !document.getElementById(`${AF_ID}-badge`)
+        && !document.getElementById(`${AF_ID}-panel`)) {
+      noFieldsTimer = setTimeout(() => {
+        noFieldsTimer = null;
+        // Double-check: badge may have appeared while we were waiting
+        if (!document.getElementById(`${AF_ID}-badge`) && !document.getElementById(`${AF_ID}-panel`)) {
+          showActivateBanner(forceActivate);
+        }
+      }, 3000);
+    }
+    return;
+  }
+
+  // Fields found — cancel any pending timer and hide the banner
+  if (noFieldsTimer) { clearTimeout(noFieldsTimer); noFieldsTimer = null; }
+  if (isActivateBannerVisible()) hideActivateBanner();
 
   const fieldsKey = getFieldsKey([...known, ...unknownActionable]);
   const panelOpen = !!document.getElementById(`${AF_ID}-panel`);
@@ -1239,4 +1394,6 @@ chrome.storage?.onChanged?.addListener((changes, areaName) => {
 window.addEventListener("pagehide", () => {
   stopApplicationDetector?.();
   stopApplicationDetector = null;
+  if (noFieldsTimer) { clearTimeout(noFieldsTimer); noFieldsTimer = null; }
+  hideActivateBanner();
 });

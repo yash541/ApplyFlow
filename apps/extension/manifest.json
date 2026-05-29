@@ -34,6 +34,7 @@
     {
       "matches": [
         "https://boards.greenhouse.io/*",
+        "https://job-boards.greenhouse.io/*",
         "https://jobs.lever.co/*",
         "https://jobs.ashbyhq.com/*",
         "https://*.indeed.com/viewjob*",
@@ -78,6 +79,21 @@
         "https://*.icims.com/*",
         "https://*.indeed.com/viewjob*",
         "https://instahyre.com/*",
+        "https://hirist.tech/*",
+        "https://*.naukri.com/*",
+        "https://cutshort.io/*",
+        "https://*.phenompro.com/*",
+        "https://*.taleo.net/*",
+        "https://*.successfactors.com/*",
+        "https://*.successfactors.eu/*",
+        "https://*.myworkday.com/*",
+        "https://*.wd1.myworkdayjobs.com/*",
+        "https://*.wd3.myworkdayjobs.com/*",
+        "https://*.wd5.myworkdayjobs.com/*",
+        "https://*.ultipro.com/*",
+        "https://*.paylocity.com/*",
+        "https://*.jobvite.com/*",
+        "https://*.lever.co/*",
         "http://localhost:3000/demo-apply*"
       ],
       "js": ["src/content/autofill.ts"],
@@ -106,6 +122,16 @@
     "https://glassdoor.fr/*",
     "https://wellfound.com/*",
     "https://instahyre.com/*",
+    "https://hirist.tech/*",
+    "https://*.naukri.com/*",
+    "https://cutshort.io/*",
+    "https://*.phenompro.com/*",
+    "https://*.taleo.net/*",
+    "https://*.successfactors.com/*",
+    "https://*.successfactors.eu/*",
+    "https://*.myworkday.com/*",
+    "https://*.ultipro.com/*",
+    "https://*.paylocity.com/*",
     "http://localhost:8000/*",
     "http://localhost:3000/*",
     "https://api.applyflow.ai/*",
@@ -118,6 +144,10 @@
     {
       "resources": ["src/content/overlay.html"],
       "matches": ["https://www.linkedin.com/*"]
+    },
+    {
+      "resources": ["assets/*"],
+      "matches": ["<all_urls>"]
     }
   ]
 }

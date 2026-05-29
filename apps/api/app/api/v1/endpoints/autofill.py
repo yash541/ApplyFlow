@@ -272,9 +272,9 @@ async def match_fields(
             select(Application).where(
                 Application.user_id == current_user.id,
                 Application.job_url == body.url,
-            )
+            ).order_by(Application.applied_at.desc())
         )
-        application = app_result.scalar_one_or_none()
+        application = app_result.scalars().first()  # most recent if duplicates exist
         if application:
             resume_result = await db.execute(
                 select(Resume).where(
@@ -282,9 +282,9 @@ async def match_fields(
                     Resume.user_id == current_user.id,
                     Resume.type == "tailored",
                     Resume.pdf_bytes.isnot(None),
-                )
+                ).order_by(Resume.created_at.desc())
             )
-            tailored = resume_result.scalar_one_or_none()
+            tailored = resume_result.scalars().first()
             if tailored:
                 best_resume_id = str(tailored.id)
                 best_resume_name = tailored.name

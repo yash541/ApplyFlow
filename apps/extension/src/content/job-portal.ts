@@ -15,7 +15,7 @@ const host = location.hostname;
 
 const adapter =
   // Phase 2 — ATS portals
-  host === "boards.greenhouse.io"     ? greenhouseAdapter :
+  host === "boards.greenhouse.io" || host === "job-boards.greenhouse.io" ? greenhouseAdapter :
   host === "jobs.lever.co"            ? leverAdapter :
   host === "jobs.ashbyhq.com"         ? ashbyAdapter :
   // Phase 3 — Job boards

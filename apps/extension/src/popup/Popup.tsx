@@ -120,17 +120,88 @@ function RegisterForm({ onLogin }: { onLogin: (s: AuthSession) => void }) {
   );
 }
 
+// ── Universal permission banner ───────────────────────────────────────────────
+
+type PermState = "checking" | "needed" | "granted" | "hidden";
+
+function UniversalPermissionBanner() {
+  const [state, setState] = useState<PermState>("checking");
+  const [requesting, setRequesting] = useState(false);
+
+  useEffect(() => {
+    async function check() {
+      try {
+        const has = await chrome.permissions.contains({ origins: ["<all_urls>"] });
+        setState(has ? "granted" : "needed");
+      } catch {
+        setState("hidden"); // permissions API unavailable
+      }
+    }
+    void check();
+  }, []);
+
+  async function handleEnable() {
+    setRequesting(true);
+    try {
+      const granted = await chrome.permissions.request({ origins: ["<all_urls>"] });
+      setState(granted ? "granted" : "needed");
+    } catch {
+      setState("hidden");
+    } finally {
+      setRequesting(false);
+    }
+  }
+
+  if (state === "checking" || state === "hidden" || state === "granted") return null;
+
+  // state === "needed"
+  return (
+    <div style={{
+      margin: "0 16px 10px",
+      padding: "12px",
+      borderRadius: 10,
+      background: "rgba(99,102,241,0.06)",
+      border: "1px solid rgba(99,102,241,0.2)",
+    }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 10 }}>
+        <span style={{ fontSize: 18, flexShrink: 0 }}>🌐</span>
+        <div>
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#1e1b4b" }}>
+            Enable autofill on all job sites
+          </p>
+          <p style={{ margin: "3px 0 0", fontSize: 12, color: "#6b7280", lineHeight: 1.4 }}>
+            Right now autofill only works on ~14 pre-configured portals. Grant
+            permission once to get the badge on <strong>any</strong> ATS — Naukri,
+            Workday, Taleo, custom company pages, and more.
+          </p>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          onClick={handleEnable}
+          disabled={requesting}
+          style={{ ...btnStyle, flex: 1, fontSize: 12, padding: "8px 12px" }}
+        >
+          {requesting ? "Requesting…" : "Enable on all sites →"}
+        </button>
+        <button
+          onClick={() => setState("hidden")}
+          style={{ ...btnSmall, background: "#f3f4f6", color: "#6b7280", border: "1px solid #e5e7eb", fontSize: 12 }}
+        >
+          Not now
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
-type AppTab = "activity" | "applications";
-
 function DashboardView({ session, onLogout }: { session: AuthSession; onLogout: () => void }) {
-  const [tab, setTab] = useState<AppTab>("activity");
-
   function handleLogout() { chrome.storage.local.remove("session"); onLogout(); }
 
   return (
-    <div style={{ width: 380, display: "flex", flexDirection: "column", minHeight: 420 }}>
+    <div style={{ width: 380, display: "flex", flexDirection: "column" }}>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px 0" }}>
         <h1 style={{ margin: 0, color: "#6366f1", fontSize: 17, fontWeight: 700 }}>⚡ ApplyFlow AI</h1>
@@ -138,23 +209,27 @@ function DashboardView({ session, onLogout }: { session: AuthSession; onLogout: 
           Sign out
         </button>
       </div>
-      <p style={{ margin: "4px 16px 10px", color: "#6b7280", fontSize: 12 }}>
+      <p style={{ margin: "4px 16px 12px", color: "#6b7280", fontSize: 12 }}>
         {session.user.name}
       </p>
 
-      {/* Tabs */}
-      <TabRow
-        tabs={["activity", "applications"] as const}
-        active={tab}
-        onSelect={setTab}
-        labels={{ activity: "Activity", applications: "Applications" }}
-        style={{ margin: "0 16px" }}
-      />
+      {/* Permission banner — shown only when <all_urls> not yet granted */}
+      <UniversalPermissionBanner />
 
-      {/* Tab content */}
-      <div style={{ flex: 1, overflow: "hidden" }}>
-        {tab === "activity"     && <ActivityTab session={session} />}
-        {tab === "applications" && <ApplicationsTab token={session.token} />}
+      {/* Quick links */}
+      <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+        <button
+          onClick={() => chrome.tabs.create({ url: "http://localhost:3000/applications" })}
+          style={{ ...btnStyle, width: "100%", background: "rgba(99,102,241,0.08)", color: "#6366f1", border: "1px solid rgba(99,102,241,0.2)", fontSize: 13 }}
+        >
+          Open tracker →
+        </button>
+        <button
+          onClick={() => chrome.tabs.create({ url: "http://localhost:3000/resume" })}
+          style={{ ...btnStyle, width: "100%", background: "transparent", color: "#9ca3af", border: "1px solid #e5e7eb", fontSize: 13 }}
+        >
+          Resume Lab →
+        </button>
       </div>
     </div>
   );
@@ -349,16 +424,19 @@ function TrackForm({
   token,
   onSuccess,
   onCancel,
+  inline,
 }: {
   token: string;
   onSuccess: (app: AppRecord) => void;
   onCancel: () => void;
+  inline?: boolean;
 }) {
   const [company, setCompany] = useState("");
   const [role, setRole]       = useState("");
   const [url, setUrl]         = useState("");
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState("");
+  const [saved, setSaved]     = useState(false);
 
   // Pre-fill URL from active tab
   useEffect(() => {
@@ -384,9 +462,23 @@ function TrackForm({
         setError(err.detail ?? "Failed to save"); return;
       }
       const data = await res.json() as AppRecord;
-      onSuccess(data);
+      if (inline) {
+        // In-place success — reset form after a brief confirmation
+        setSaved(true);
+        setTimeout(() => { setSaved(false); setCompany(""); setRole(""); }, 2000);
+      } else {
+        onSuccess(data);
+      }
     } catch { setError("API unavailable"); }
     finally  { setSaving(false); }
+  }
+
+  if (saved) {
+    return (
+      <div style={{ padding: "12px", textAlign: "center", background: "rgba(16,185,129,0.08)", borderRadius: 10, border: "1px solid rgba(16,185,129,0.25)" }}>
+        <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#065f46" }}>✅ Job tracked!</p>
+      </div>
+    );
   }
 
   return (
@@ -409,9 +501,11 @@ function TrackForm({
         <button type="submit" disabled={saving || !company.trim() || !role.trim()} style={{ ...btnStyle, flex: 1, fontSize: 13, padding: "8px 12px" }}>
           {saving ? "Saving…" : "Track →"}
         </button>
-        <button type="button" onClick={onCancel} style={{ ...btnSmall, background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb" }}>
-          Cancel
-        </button>
+        {!inline && (
+          <button type="button" onClick={onCancel} style={{ ...btnSmall, background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb" }}>
+            Cancel
+          </button>
+        )}
       </div>
     </form>
   );

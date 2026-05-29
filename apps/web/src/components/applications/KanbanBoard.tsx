@@ -52,6 +52,15 @@ function AtsChip({ score }: { score: number }) {
   );
 }
 
+function ResumeReadyChip({ atsScore }: { atsScore: number | null }) {
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-violet-500/15 text-violet-400 border border-violet-500/20">
+      <Sparkles className="h-2.5 w-2.5" />
+      Resume ready{atsScore != null ? ` · ${atsScore}` : ""}
+    </span>
+  );
+}
+
 // ── Compact Kanban Card ───────────────────────────────────────────────────────
 
 function KanbanCard({ app, onDelete, onStatusChange, onOpen }: {
@@ -102,12 +111,7 @@ function KanbanCard({ app, onDelete, onStatusChange, onOpen }: {
         <Badge variant={STATUS_VARIANT[app.status] ?? "neutral"} size="sm">
           {app.status.charAt(0).toUpperCase() + app.status.slice(1)}
         </Badge>
-        {app.has_resume && app.ats_score != null && <AtsChip score={app.ats_score} />}
-        {app.has_resume && app.ats_score == null && (
-          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-violet-500/15 text-violet-400">
-            Resume
-          </span>
-        )}
+        {app.has_resume && <ResumeReadyChip atsScore={app.ats_score} />}
         {app.job_url && (
           <a
             href={app.job_url}

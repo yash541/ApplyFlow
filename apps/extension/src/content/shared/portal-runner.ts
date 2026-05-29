@@ -275,8 +275,10 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
               stopInterceptor = startApplyInterceptor({
                 fingerprint,
                 applicationId: appId,
-                tailoredResumeId: null, // no tailored resume yet — user just saved
+                tailoredResumeId: null,
                 sourcePortal: portal,
+                company: jobData.company,
+                role: jobData.title,
               });
               chrome.runtime.sendMessage({
                 type: "RECORD_OBSERVATION",
@@ -302,6 +304,8 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
               applicationId: existing?.id ?? "",
               tailoredResumeId: existing?.resume_id ?? null,
               sourcePortal: portal,
+              company: jobData.company,
+              role: jobData.title,
             });
 
             // Overlay guard: some SPA portals (LinkedIn, Glassdoor) re-render

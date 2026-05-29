@@ -212,7 +212,9 @@ function isKnownStaticAutofillUrl(url: string): boolean {
       host === "boards.greenhouse.io" ||
       host.endsWith(".greenhouse.io") ||
       host === "jobs.lever.co" ||
+      host.endsWith(".lever.co") ||
       host.endsWith(".myworkdayjobs.com") ||
+      host.endsWith(".myworkday.com") ||
       host === "jobs.ashbyhq.com" ||
       host === "apply.workable.com" ||
       host === "jobs.smartrecruiters.com" ||
@@ -221,6 +223,15 @@ function isKnownStaticAutofillUrl(url: string): boolean {
       host.endsWith(".icims.com") ||
       host.endsWith(".indeed.com") && path.startsWith("/viewjob") ||
       host === "instahyre.com" ||
+      host === "hirist.tech" ||
+      host.endsWith(".naukri.com") ||
+      host === "cutshort.io" ||
+      host.endsWith(".phenompro.com") ||
+      host.endsWith(".taleo.net") ||
+      host.endsWith(".successfactors.com") ||
+      host.endsWith(".successfactors.eu") ||
+      host.endsWith(".ultipro.com") ||
+      host.endsWith(".paylocity.com") ||
       host === "localhost" && u.port === "3000" && path.startsWith("/demo-apply")
     );
   } catch {
@@ -274,13 +285,64 @@ async function ensureDynamicApplyPermission(): Promise<boolean> {
   }
 }
 
+function looksLikeJobApplicationUrl(url: string): boolean {
+  try {
+    const u    = new URL(url);
+    const path = u.pathname.toLowerCase();
+    const qs   = u.search.toLowerCase();
+    return (
+      // Path-based signals
+      path.includes("/apply") ||
+      path.includes("/application") ||
+      path.includes("/candidate") ||
+      path.includes("/career") ||           // /careers, /careers/, /career-portal
+      path.includes("/jobs/") ||
+      path.includes("/job/") ||
+      path.includes("/registration/") ||    // hirist.tech, many Indian portals
+      path.includes("/onboard") ||          // instahyre onboarding flow
+      path.includes("personaldetail") ||    // hirist.tech /addPersonalDetails
+      path.includes("/jobapply") ||
+      path.includes("/openings") ||
+      // Query-based signals — ATS-specific job ID params
+      qs.includes("ashby_jid=") ||          // Ashby embedded on company domains
+      qs.includes("gh_jid=") ||             // Greenhouse embedded
+      qs.includes("lever_jid=") ||          // Lever embedded
+      qs.includes("jobseqno=") ||
+      qs.includes("jobid=") ||
+      qs.includes("job_id=") ||
+      qs.includes("requisitionid=") ||
+      qs.includes("jk=") ||
+      qs.includes("currentjobid=") ||
+      qs.includes("step=") ||
+      qs.includes("apply") ||
+      // Strongest signal: user arrived via a LinkedIn apply redirect
+      qs.includes("source=linkedin") ||
+      qs.includes("pref=linkedin") ||
+      qs.includes("utm_source=linkedin") ||
+      qs.includes("source=reg")             // registration sourced from job apply
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function maybeInjectDynamicAutofill(tabId: number, url: string): Promise<void> {
   if (!isHttpUrl(url) || isKnownStaticAutofillUrl(url)) return;
-
-  const session = await getApplySessionForBackground();
-  if (!session || session.currentState === "submitted" || session.currentState === "abandoned") return;
-  if (session.sourceTabId !== undefined && session.sourceTabId !== tabId) return;
   if (!await hasDynamicApplyPermission()) return;
+
+  // Path A: active apply session ties this navigation to a tracked job
+  const session = await getApplySessionForBackground();
+  const hasActiveSession = !!session
+    && session.currentState !== "submitted"
+    && session.currentState !== "abandoned"
+    && (session.sourceTabId === undefined || session.sourceTabId === tabId);
+
+  // Path B: no session, but the URL strongly suggests a job application form.
+  // When the user has granted <all_urls> they want the badge everywhere that
+  // looks like an apply page — not just pages reached through tracked jobs.
+  const urlIsApplyForm = !hasActiveSession && looksLikeJobApplicationUrl(url);
+
+  if (!hasActiveSession && !urlIsApplyForm) return;
 
   const injectionKey = `${tabId}:${url}`;
   if (lastDynamicInjection.get(tabId) === injectionKey) return;
@@ -659,7 +721,7 @@ async function quickTrack(
         company: payload.company,
         role: payload.role,
         job_url: url || null,
-        status: "applied",
+        status: "saved",
       }),
     });
     if (!res.ok) {

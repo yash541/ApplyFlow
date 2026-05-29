@@ -29,6 +29,8 @@ export type InterceptorOptions = {
   applicationId: string;
   tailoredResumeId?: string | null;
   sourcePortal: string;
+  company?: string;
+  role?: string;
 };
 
 async function requestDynamicApplyPermission(): Promise<void> {
@@ -78,7 +80,7 @@ function findApplyAncestor(target: EventTarget | null): HTMLElement | null {
  * Returns a cleanup function that removes the listener.
  */
 export function startApplyInterceptor(options: InterceptorOptions): () => void {
-  const { fingerprint, applicationId, tailoredResumeId, sourcePortal } = options;
+  const { fingerprint, applicationId, tailoredResumeId, sourcePortal, company, role } = options;
   let lastPersistedAt = 0;
 
   const persistSession = () => {
@@ -97,6 +99,8 @@ export function startApplyInterceptor(options: InterceptorOptions): () => void {
           fingerprintHash: fingerprint.hash,
           sourcePortal,
           tailoredResumeId: tailoredResumeId ?? undefined,
+          company,
+          role,
         });
 
         chrome.runtime.sendMessage({
