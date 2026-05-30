@@ -15,7 +15,9 @@ import {
   ArrowLeft, Sparkles, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Plus,
   SlidersHorizontal, Trash2,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { createPortal } from "react-dom";
+import { AnimatePresence, motion } from "framer-motion";
+import { api, rewriteBullet } from "@/lib/api";
 import {
   useResumeLabStore, type TailoredContent, type TemplateId, type FontStyle,
   type CustomSection, type EditorPrefs,
@@ -50,6 +52,192 @@ const TEMPLATES: { id: TemplateId; label: string }[] = [
 ];
 
 // ─── Editable primitives ──────────────────────────────────────────────────────
+// ─── Centered edit modal (replaces inline editing) ───────────────────────────
+
+function EditModal({
+  isOpen, label, value, placeholder = "", minHeight = 140,
+  regenContext, onSave, onCancel,
+}: {
+  isOpen: boolean;
+  label: string;
+  value: string;
+  placeholder?: string;
+  minHeight?: number;
+  /** When provided, shows a ✨ Regenerate button */
+  regenContext?: { jobDescription?: string; role?: string };
+  onSave: (v: string) => void;
+  onCancel: () => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [original, setOriginal] = useState(value);   // for undo after regen
+  const [regenerated, setRegenerated] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenError, setRegenError] = useState("");
+
+  useEffect(() => {
+    if (isOpen) {
+      setDraft(value);
+      setOriginal(value);
+      setRegenerated(false);
+      setRegenError("");
+    }
+  }, [isOpen, value]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onCancel();
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); onSave(draft); }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isOpen, draft, onSave, onCancel]);
+
+  async function handleRegenerate() {
+    if (!regenContext || regenerating) return;
+    setRegenerating(true);
+    setRegenError("");
+    try {
+      const result = await rewriteBullet({
+        bullet: draft,
+        jobDescription: regenContext.jobDescription,
+        role: regenContext.role,
+      });
+      setDraft(result);
+      setRegenerated(true);
+    } catch {
+      setRegenError("Regeneration failed — please try again.");
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          {/* Backdrop */}
+          <motion.div
+            className="fixed inset-0 z-[200] bg-black/70 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            onClick={onCancel}
+          />
+
+          {/* Modal */}
+          <div className="fixed inset-0 z-[201] flex items-center justify-center p-6 pointer-events-none">
+            <motion.div
+              className="w-full max-w-2xl pointer-events-auto overflow-hidden rounded-2xl border border-white/10 bg-surface-container shadow-2xl"
+              initial={{ opacity: 0, scale: 0.94, y: 14 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 14 }}
+              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-white/5 px-5 py-4">
+                <p className="text-label-sm font-semibold uppercase tracking-wider text-on-surface-variant/50">
+                  {label}
+                </p>
+                <button
+                  onClick={onCancel}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-on-surface-variant/40 transition-colors hover:bg-white/5 hover:text-on-surface"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Textarea */}
+              <div className="px-5 pt-4 pb-3">
+                <div className="relative">
+                  <textarea
+                    autoFocus={!regenerating}
+                    value={draft}
+                    placeholder={placeholder}
+                    disabled={regenerating}
+                    onChange={e => setDraft(e.target.value)}
+                    className="w-full resize-none rounded-xl border border-outline-variant/40 bg-surface-container-high px-4 py-3
+                               text-body-md text-on-surface placeholder:text-on-surface-variant/40 leading-relaxed
+                               focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 transition-all
+                               disabled:opacity-40 disabled:cursor-wait"
+                    style={{ minHeight }}
+                  />
+                  {/* Regenerating overlay */}
+                  {regenerating && (
+                    <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-surface-container-high/80">
+                      <div className="flex items-center gap-2 text-label-sm text-primary">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Rewriting with AI…
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Undo + error row */}
+                <div className="mt-2 flex items-center justify-between">
+                  <p className="text-[11px] text-on-surface-variant/30">
+                    <kbd className="font-mono">⌘↵</kbd> save · <kbd className="font-mono">Esc</kbd> cancel ·{" "}
+                    <span className="font-mono">[text](url)</span> for links
+                  </p>
+                  {regenerated && (
+                    <button
+                      onClick={() => { setDraft(original); setRegenerated(false); }}
+                      className="flex items-center gap-1 text-[11px] text-on-surface-variant/50 hover:text-on-surface-variant transition-colors"
+                    >
+                      ↩ Undo regen
+                    </button>
+                  )}
+                </div>
+                {regenError && (
+                  <p className="mt-1 text-[11px] text-red-400">{regenError}</p>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center border-t border-white/5 bg-black/10 px-5 py-4">
+                {/* Left: Regenerate */}
+                {regenContext && (
+                  <button
+                    onClick={handleRegenerate}
+                    disabled={regenerating}
+                    className="flex items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/8 px-4 h-9
+                               text-label-md text-primary transition-all hover:bg-primary/15 disabled:opacity-40 disabled:cursor-wait"
+                  >
+                    {regenerating
+                      ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Rewriting…</>
+                      : <><Sparkles className="h-3.5 w-3.5" /> Regenerate</>
+                    }
+                  </button>
+                )}
+
+                {/* Right: Cancel + Save */}
+                <div className="ml-auto flex items-center gap-3">
+                  <button
+                    onClick={onCancel}
+                    className="h-9 rounded-lg border border-white/10 px-5 text-label-md text-on-surface-variant transition-colors hover:bg-white/5"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => onSave(draft)}
+                    className="flex h-9 items-center gap-1.5 rounded-lg bg-primary px-5 font-medium text-label-md text-on-primary transition-colors hover:bg-primary/90"
+                  >
+                    <Check className="h-3.5 w-3.5" /> Save
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </>
+      )}
+    </AnimatePresence>,
+    document.body,
+  );
+}
+
 function EditableField({
   value, onSave, placeholder = "Click to edit", className = "",
 }: {
@@ -85,83 +273,57 @@ function EditableField({
 }
 
 function EditableArea({
-  value, onSave, className = "",
+  value, onSave, className = "", label = "Edit",
 }: {
-  value: string; onSave: (v: string) => void; className?: string;
+  value: string; onSave: (v: string) => void; className?: string; label?: string;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
-
-  if (editing) {
-    return (
-      <div className="space-y-1.5">
-        <textarea
-          autoFocus rows={3} value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { onSave(draft); setEditing(false); }
-            if (e.key === "Escape") { setDraft(value); setEditing(false); }
-          }}
-          className={`w-full bg-surface-container-high border border-primary/50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none ${className}`}
-        />
-        <div className="flex items-center gap-2">
-          <button onClick={() => { onSave(draft); setEditing(false); }} className="h-6 px-2.5 rounded bg-primary text-on-primary text-xs font-medium flex items-center gap-1">
-            <Check className="h-3 w-3" /> Save
-          </button>
-          <button onClick={() => { setDraft(value); setEditing(false); }} className="h-6 px-2.5 rounded bg-white/5 border border-white/10 text-xs text-on-surface-variant">Cancel</button>
-          <span className="text-[10px] text-on-surface-variant/30">⌘↵</span>
-        </div>
-      </div>
-    );
-  }
+  const [open, setOpen] = useState(false);
   return (
-    <div
-      onClick={() => { setDraft(value); setEditing(true); }}
-      className={`cursor-text group/area relative rounded-lg px-3 py-2 border border-transparent hover:border-white/10 hover:bg-white/3 transition-all ${className}`}
-    >
-      <p className="text-sm text-on-surface-variant leading-relaxed pr-5">{value}</p>
-      <Pencil className="absolute top-2 right-2 h-3 w-3 text-on-surface-variant/0 group-hover/area:text-on-surface-variant/40 transition-all" />
-    </div>
+    <>
+      <EditModal
+        isOpen={open} label={label} value={value} minHeight={160}
+        onSave={v => { onSave(v); setOpen(false); }}
+        onCancel={() => setOpen(false)}
+      />
+      <div
+        onClick={() => setOpen(true)}
+        className={`cursor-text group/area relative rounded-lg px-3 py-2 border border-transparent hover:border-white/10 hover:bg-white/[0.03] transition-all ${className}`}
+      >
+        <p className="text-sm text-on-surface-variant leading-relaxed pr-5">{value}</p>
+        <Pencil className="absolute top-2 right-2 h-3 w-3 text-on-surface-variant/0 group-hover/area:text-on-surface-variant/40 transition-all" />
+      </div>
+    </>
   );
 }
 
-function EditableBullet({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
+function EditableBullet({ value, onChange, role }: {
+  value: string;
+  onChange: (v: string) => void;
+  role?: string;
+}) {
+  const [open, setOpen] = useState(false);
   const isLong = value.length > 250;
+  const { prefillJd } = useResumeLabStore();
 
-  if (editing) {
-    return (
-      <div className="space-y-1 py-1 px-2">
-        <textarea autoFocus value={draft} onChange={e => setDraft(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { onChange(draft); setEditing(false); }
-            if (e.key === "Escape") { setDraft(value); setEditing(false); }
-          }}
-          rows={2}
-          className="w-full text-sm text-on-surface bg-surface-container-high border border-primary/50 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
-        />
-        <div className="flex items-center gap-2">
-          <button onClick={() => { onChange(draft); setEditing(false); }} className="h-6 px-2.5 rounded bg-primary text-on-primary text-xs font-medium flex items-center gap-1">
-            <Check className="h-3 w-3" /> Save
-          </button>
-          <button onClick={() => { setDraft(value); setEditing(false); }} className="h-6 px-2.5 rounded bg-white/5 border border-white/10 text-xs text-on-surface-variant">Cancel</button>
-          <span className="text-[10px] text-on-surface-variant/30">⌘↵ · Esc</span>
-          <span className="ml-auto text-[10px] text-on-surface-variant/25 font-mono">[text](url) for links</span>
-        </div>
-      </div>
-    );
-  }
   return (
-    <div
-      onClick={() => { setDraft(value); setEditing(true); }}
-      className={`flex items-start gap-2 group/bullet cursor-text rounded-lg px-2 py-1.5 border transition-all
-        ${isLong ? "border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10" : "border-transparent hover:bg-white/5 hover:border-white/8"}`}
-    >
-      <span className="text-primary/60 mt-0.5 shrink-0 text-sm">•</span>
-      <span className="flex-1 text-sm text-on-surface-variant leading-relaxed">{value}</span>
-      <Pencil className="h-3 w-3 mt-1 shrink-0 text-on-surface-variant/0 group-hover/bullet:text-primary/50 transition-all" />
-    </div>
+    <>
+      <EditModal
+        isOpen={open} label="Edit bullet" value={value} minHeight={140}
+        placeholder="Write a strong action-verb bullet…"
+        regenContext={{ jobDescription: prefillJd || undefined, role }}
+        onSave={v => { onChange(v); setOpen(false); }}
+        onCancel={() => setOpen(false)}
+      />
+      <div
+        onClick={() => setOpen(true)}
+        className={`flex items-start gap-2 group/bullet cursor-text rounded-lg px-2 py-1.5 border transition-all
+          ${isLong ? "border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10" : "border-transparent hover:bg-white/5 hover:border-white/8"}`}
+      >
+        <span className="text-primary/60 mt-0.5 shrink-0 text-sm">•</span>
+        <span className="flex-1 text-sm text-on-surface-variant leading-relaxed">{value}</span>
+        <Pencil className="h-3 w-3 mt-1 shrink-0 text-on-surface-variant/0 group-hover/bullet:text-primary/50 transition-all" />
+      </div>
+    </>
   );
 }
 
@@ -736,6 +898,12 @@ export function ResumeSplitEditor() {
             </div>
             <div className="flex items-center gap-1.5">
               <span className="text-white/30">ATS</span>
+              {content.ats_score_before != null && (
+                <>
+                  <span className="text-white/30 line-through text-[10px]">{content.ats_score_before}</span>
+                  <span className="text-white/20">→</span>
+                </>
+              )}
               <span className="font-semibold" style={{ color: content.ats_score >= 80 ? "#22c55e" : content.ats_score >= 60 ? "#f59e0b" : "#ef4444" }}>
                 {content.ats_score}
               </span>
@@ -954,7 +1122,7 @@ export function ResumeSplitEditor() {
                     {exp.bullets.map((b, j) => (
                       <div key={j} className="group/brow flex items-start">
                         <div className="flex-1 min-w-0">
-                          <EditableBullet value={b} onChange={v => updateBullet(i, j, v)} />
+                          <EditableBullet value={b} onChange={v => updateBullet(i, j, v)} role={`${exp.title} at ${exp.company}`} />
                         </div>
                         <button onClick={() => deleteExpBullet(i, j)}
                           className="mt-2 mr-1.5 opacity-0 group-hover/brow:opacity-100 text-on-surface-variant/30 hover:text-red-400 transition-all shrink-0">
@@ -1199,13 +1367,28 @@ export function ResumeSplitEditor() {
               </div>
             ))}
 
-            {/* Keywords */}
+            {/* Keywords injected */}
             {content.keywords_added.length > 0 && (
               <div className="space-y-1.5">
                 <p className="text-[10px] font-semibold text-on-surface-variant/40 uppercase tracking-wider px-1">Keywords Injected</p>
                 <div className="flex flex-wrap gap-1.5">
                   {content.keywords_added.map(kw => (
                     <span key={kw} className="px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[10px] text-primary font-medium">{kw}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Keyword stuffing flags — phrases Claude flagged as potentially unnatural */}
+            {(content.keyword_stuffing_flags?.length ?? 0) > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-semibold text-amber-400/70 uppercase tracking-wider px-1 flex items-center gap-1">
+                  ⚠ Review These Phrases
+                </p>
+                <p className="text-[10px] text-on-surface-variant/40 px-1">Claude flagged these as possibly forced — review before sending.</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {content.keyword_stuffing_flags!.map(flag => (
+                    <span key={flag} className="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/25 text-[10px] text-amber-400 font-medium">{flag}</span>
                   ))}
                 </div>
               </div>

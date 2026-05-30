@@ -48,16 +48,46 @@ export default function Popup() {
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
-function AuthView({ onLogin }: { onLogin: (s: AuthSession) => void }) {
-  const [tab, setTab] = useState<"login" | "register">("login");
+function AuthView({ onLogin: _onLogin }: { onLogin: (s: AuthSession) => void }) {
+  const { enabled, toggle } = useEnabled();
+  function openLogin() { chrome.tabs.create({ url: "http://localhost:3000/login" }); }
+
   return (
-    <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ textAlign: "center" }}>
-        <h1 style={{ margin: 0, color: "#6366f1", fontSize: 20 }}>⚡ ApplyFlow AI</h1>
+    <div style={{
+      width: 300, background: "linear-gradient(135deg,#0f0f1a 0%,#1a1a2e 100%)",
+      fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
+    }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px 16px 12px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+        <div style={{ width: 28, height: 28, background: "rgba(99,102,241,0.2)", border: "1px solid rgba(99,102,241,0.4)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>⚡</div>
+        <span style={{ color: "#c7d2fe", fontSize: 14, fontWeight: 700, flex: 1 }}>ApplyFlow AI</span>
       </div>
-      <TabRow tabs={["login", "register"] as const} active={tab} onSelect={setTab}
-        labels={{ login: "Sign In", register: "Register" }} />
-      {tab === "login" ? <LoginForm onLogin={onLogin} /> : <RegisterForm onLogin={onLogin} />}
+
+      {/* Enable/Disable toggle — always visible regardless of auth */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+        <div>
+          <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: enabled ? "#c7d2fe" : "#6b7280" }}>Extension {enabled ? "Active" : "Paused"}</p>
+          <p style={{ margin: "2px 0 0", fontSize: 10, color: "#4b5563" }}>{enabled ? "Overlay & autofill running" : "All features paused"}</p>
+        </div>
+        <button onClick={toggle} style={{ width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer", background: enabled ? "#6366f1" : "rgba(255,255,255,0.1)", position: "relative", transition: "background 0.2s", flexShrink: 0 }}>
+          <span style={{ position: "absolute", top: 2, left: enabled ? 22 : 2, width: 20, height: 20, borderRadius: "50%", background: "#fff", transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.3)" }} />
+        </button>
+      </div>
+
+      {/* Login prompt */}
+      <div style={{ padding: "16px 16px 14px", display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+        <div style={{ textAlign: "center" }}>
+          <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "#e5e7eb" }}>Sign in to track & autofill</p>
+          <p style={{ margin: "3px 0 0", fontSize: 11, color: "#4b5563" }}>Track jobs, autofill forms, tailor resumes</p>
+        </div>
+        <button onClick={openLogin} style={{ width: "100%", padding: "9px 16px", background: "#6366f1", color: "#fff", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+          onMouseEnter={e => { (e.target as HTMLElement).style.background = "#4f46e5"; }}
+          onMouseLeave={e => { (e.target as HTMLElement).style.background = "#6366f1"; }}
+        >
+          ⚡ Log in to ApplyFlow →
+        </button>
+        <p style={{ margin: 0, fontSize: 10, color: "rgba(255,255,255,0.18)", textAlign: "center" }}>Login on web app — extension syncs automatically</p>
+      </div>
     </div>
   );
 }
@@ -157,37 +187,35 @@ function UniversalPermissionBanner() {
   // state === "needed"
   return (
     <div style={{
-      margin: "0 16px 10px",
+      margin: "10px 12px",
       padding: "12px",
       borderRadius: 10,
-      background: "rgba(99,102,241,0.06)",
-      border: "1px solid rgba(99,102,241,0.2)",
+      background: "rgba(99,102,241,0.1)",
+      border: "1px solid rgba(99,102,241,0.25)",
     }}>
-      <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 10 }}>
-        <span style={{ fontSize: 18, flexShrink: 0 }}>🌐</span>
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 10 }}>
+        <span style={{ fontSize: 16, flexShrink: 0 }}>🌐</span>
         <div>
-          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#1e1b4b" }}>
-            Enable autofill on all job sites
+          <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "#c7d2fe" }}>
+            Enable on all job sites
           </p>
-          <p style={{ margin: "3px 0 0", fontSize: 12, color: "#6b7280", lineHeight: 1.4 }}>
-            Right now autofill only works on ~14 pre-configured portals. Grant
-            permission once to get the badge on <strong>any</strong> ATS — Naukri,
-            Workday, Taleo, custom company pages, and more.
+          <p style={{ margin: "3px 0 0", fontSize: 11, color: "#6b7280", lineHeight: 1.4 }}>
+            Grant once to get autofill on any ATS — Naukri, Workday, Taleo and more.
           </p>
         </div>
       </div>
       <div style={{ display: "flex", gap: 8 }}>
-        <button
-          onClick={handleEnable}
-          disabled={requesting}
-          style={{ ...btnStyle, flex: 1, fontSize: 12, padding: "8px 12px" }}
-        >
-          {requesting ? "Requesting…" : "Enable on all sites →"}
+        <button onClick={handleEnable} disabled={requesting} style={{
+          flex: 1, padding: "7px 10px", background: "#6366f1", color: "#fff",
+          border: "none", borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: "pointer",
+        }}>
+          {requesting ? "Requesting…" : "Enable →"}
         </button>
-        <button
-          onClick={() => setState("hidden")}
-          style={{ ...btnSmall, background: "#f3f4f6", color: "#6b7280", border: "1px solid #e5e7eb", fontSize: 12 }}
-        >
+        <button onClick={() => setState("hidden")} style={{
+          padding: "7px 10px", background: "rgba(255,255,255,0.05)",
+          border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8,
+          color: "#6b7280", fontSize: 11, cursor: "pointer",
+        }}>
           Not now
         </button>
       </div>
@@ -197,39 +225,82 @@ function UniversalPermissionBanner() {
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
+function useEnabled() {
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  useEffect(() => {
+    chrome.storage.local.get("af_enabled", r => {
+      setEnabled(r["af_enabled"] !== false); // default true
+    });
+  }, []);
+  function toggle() {
+    const next = !enabled;
+    setEnabled(next);
+    chrome.storage.local.set({ af_enabled: next });
+  }
+  return { enabled: enabled ?? true, toggle };
+}
+
 function DashboardView({ session, onLogout }: { session: AuthSession; onLogout: () => void }) {
+  const { enabled, toggle } = useEnabled();
   function handleLogout() { chrome.storage.local.remove("session"); onLogout(); }
+  const initials = session.user.name.split(" ").map(w => w[0]).join("").slice(0, 2).toUpperCase();
+
+  const S = {
+    wrap: { width: 300, background: "linear-gradient(135deg,#0f0f1a 0%,#1a1a2e 100%)", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" } as React.CSSProperties,
+    hdr: { display: "flex", alignItems: "center", gap: 8, padding: "14px 16px 12px", borderBottom: "1px solid rgba(255,255,255,0.06)" } as React.CSSProperties,
+    icon: { width: 28, height: 28, background: "rgba(99,102,241,0.2)", border: "1px solid rgba(99,102,241,0.4)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 } as React.CSSProperties,
+    row: { display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)" } as React.CSSProperties,
+    avatar: { width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(135deg,#6366f1,#8b5cf6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#fff", flexShrink: 0 } as React.CSSProperties,
+    footer: { padding: "8px 16px 10px", display: "flex", justifyContent: "center" } as React.CSSProperties,
+  };
 
   return (
-    <div style={{ width: 380, display: "flex", flexDirection: "column" }}>
+    <div style={S.wrap}>
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px 0" }}>
-        <h1 style={{ margin: 0, color: "#6366f1", fontSize: 17, fontWeight: 700 }}>⚡ ApplyFlow AI</h1>
-        <button onClick={handleLogout} style={{ ...btnStyle, background: "#f3f4f6", color: "#374151", fontSize: 11, padding: "4px 10px" }}>
-          Sign out
+      <div style={S.hdr}>
+        <div style={S.icon}>⚡</div>
+        <span style={{ color: "#c7d2fe", fontSize: 14, fontWeight: 700, flex: 1 }}>ApplyFlow AI</span>
+      </div>
+
+      {/* User card */}
+      <div style={S.row}>
+        <div style={S.avatar}>{initials}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "#f0f0ff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.user.name}</p>
+          <p style={{ margin: "1px 0 0", fontSize: 10, color: "#4b5563", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{session.user.email}</p>
+        </div>
+        <button onClick={handleLogout}
+          style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 7, color: "#9ca3af", fontSize: 11, fontWeight: 500, cursor: "pointer", padding: "5px 10px", flexShrink: 0 }}
+          onMouseEnter={e => Object.assign((e.target as HTMLElement).style, { background: "rgba(239,68,68,0.15)", color: "#f87171", borderColor: "rgba(239,68,68,0.3)" })}
+          onMouseLeave={e => Object.assign((e.target as HTMLElement).style, { background: "rgba(255,255,255,0.05)", color: "#9ca3af", borderColor: "rgba(255,255,255,0.1)" })}
+        >Sign out</button>
+      </div>
+
+      {/* Enable / Disable toggle */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+        <div>
+          <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: enabled ? "#c7d2fe" : "#6b7280" }}>Extension {enabled ? "Active" : "Paused"}</p>
+          <p style={{ margin: "2px 0 0", fontSize: 10, color: "#4b5563" }}>{enabled ? "Overlay & autofill running" : "All features paused"}</p>
+        </div>
+        {/* Toggle switch */}
+        <button onClick={toggle} style={{
+          width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
+          background: enabled ? "#6366f1" : "rgba(255,255,255,0.1)",
+          position: "relative", transition: "background 0.2s", flexShrink: 0,
+        }}>
+          <span style={{
+            position: "absolute", top: 2, left: enabled ? 22 : 2,
+            width: 20, height: 20, borderRadius: "50%", background: "#fff",
+            transition: "left 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+          }} />
         </button>
       </div>
-      <p style={{ margin: "4px 16px 12px", color: "#6b7280", fontSize: 12 }}>
-        {session.user.name}
-      </p>
 
-      {/* Permission banner — shown only when <all_urls> not yet granted */}
+      {/* Permission banner */}
       <UniversalPermissionBanner />
 
-      {/* Quick links */}
-      <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
-        <button
-          onClick={() => chrome.tabs.create({ url: "http://localhost:3000/applications" })}
-          style={{ ...btnStyle, width: "100%", background: "rgba(99,102,241,0.08)", color: "#6366f1", border: "1px solid rgba(99,102,241,0.2)", fontSize: 13 }}
-        >
-          Open tracker →
-        </button>
-        <button
-          onClick={() => chrome.tabs.create({ url: "http://localhost:3000/resume" })}
-          style={{ ...btnStyle, width: "100%", background: "transparent", color: "#9ca3af", border: "1px solid #e5e7eb", fontSize: 13 }}
-        >
-          Resume Lab →
-        </button>
+      <div style={S.footer}>
+        <span style={{ fontSize: 10, color: "rgba(255,255,255,0.15)" }}>Log in on web app — syncs automatically</span>
       </div>
     </div>
   );

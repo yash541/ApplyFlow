@@ -102,6 +102,13 @@ chrome.runtime.onMessage.addListener(
       return true;
     }
 
+    if (message.type === "SMART_MATCH") {
+      void smartMatch(message.payload as { fields: unknown[]; url: string; job_context?: string })
+        .then(sendResponse)
+        .catch(() => sendResponse({ error: "Smart match failed" }));
+      return true;
+    }
+
     if (message.type === "GET_RESUME_PDF") {
       void getResumePdfBytes((message.payload as { resumeId: string }).resumeId)
         .then(sendResponse)
@@ -166,6 +173,30 @@ chrome.runtime.onMessage.addListener(
     if (message.type === "TELEMETRY") {
       pushTelemetryEvent(message.payload as Record<string, unknown>);
       sendResponse({ ok: true });
+      return true;
+    }
+
+    if (message.type === "REGENERATE_FIELD") {
+      void regenerateField(message.payload as {
+        uid: string; kind: string; label: string;
+        current_value?: string; url?: string; page_text?: string;
+      })
+        .then(sendResponse)
+        .catch(() => sendResponse({ error: "Regeneration failed" }));
+      return true;
+    }
+
+    if (message.type === "OPEN_LOGIN") {
+      void chrome.tabs.create({ url: `${WEB_BASE}/login` })
+        .then(() => sendResponse({ ok: true }))
+        .catch(() => sendResponse({ ok: false }));
+      return true;
+    }
+
+    if (message.type === "AUTH_LOGIN") {
+      void authLogin(message.payload as { email: string; password: string })
+        .then(sendResponse)
+        .catch(() => sendResponse({ error: "Could not connect to server" }));
       return true;
     }
 
@@ -412,20 +443,40 @@ async function pushNotification(
   n: Omit<AppNotification, "id" | "timestamp" | "read">,
 ): Promise<void> {
   const result = await chrome.storage.local.get("af_notifications");
-  const list = (result["af_notifications"] ?? []) as AppNotification[];
+  // S-05 fix: guard against storage corruption — af_notifications must be an array.
+  // A plain object or other type would cause [...corruptValue] to throw TypeError.
+  const stored = result["af_notifications"];
+  const list: AppNotification[] = Array.isArray(stored) ? stored : [];
   const next: AppNotification[] = [
     { ...n, id: crypto.randomUUID(), timestamp: new Date().toISOString(), read: false },
     ...list,
   ].slice(0, 20);
   await chrome.storage.local.set({ af_notifications: next });
-  const unread = next.filter(item => !item.read).length;
-  await chrome.action.setBadgeText({ text: unread > 0 ? String(unread) : "" });
-  await chrome.action.setBadgeBackgroundColor({ color: "#6366f1" });
+  // Don't set extension badge count — notifications live in the web app bell now
+  await chrome.action.setBadgeText({ text: "" });
+
+  // Push to backend so the web app bell shows it — fire-and-forget
+  void pushNotificationToApi(n);
+}
+
+async function pushNotificationToApi(
+  n: Omit<AppNotification, "id" | "timestamp" | "read">,
+): Promise<void> {
+  try {
+    const token = await getToken();
+    if (!token) return;
+    await fetch(`${API_BASE}/api/v1/notifications/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ type: n.type, title: n.title, body: n.body }),
+    });
+  } catch { /* fire-and-forget — web app is optional */ }
 }
 
 async function markAllRead(): Promise<void> {
   const result = await chrome.storage.local.get("af_notifications");
-  const list = (result["af_notifications"] ?? []) as AppNotification[];
+  const stored2 = result["af_notifications"];
+  const list: AppNotification[] = Array.isArray(stored2) ? stored2 : [];
   await chrome.storage.local.set({
     af_notifications: list.map(n => ({ ...n, read: true })),
   });
@@ -514,7 +565,7 @@ async function checkApplication(payload: { company: string; role: string }) {
 
 async function updateAppStatus(payload: { id: string; status: string; atsMetadata?: Record<string, unknown> }) {
   try {
-    if (!await getToken()) return { error: "Please sign in via the ApplyFlow popup." };
+    if (!await getToken()) return { error: "AUTH_REQUIRED" };
     const body: Record<string, unknown> = { status: payload.status };
     if (payload.atsMetadata) body.ats_metadata = payload.atsMetadata;
     const res = await authedFetch(`${API_BASE}/api/v1/applications/${payload.id}`, {
@@ -522,7 +573,7 @@ async function updateAppStatus(payload: { id: string; status: string; atsMetadat
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (res.status === 401) return { error: "Session expired — please sign in again." };
+    if (res.status === 401) return { error: "AUTH_REQUIRED" };
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       return { error: (err as { detail?: string }).detail ?? `HTTP ${res.status}` };
@@ -548,6 +599,25 @@ async function getMatches(payload: { fields: unknown[]; url: string; job_context
   try {
     if (!await getToken()) return { error: "Not signed in" };
     const res = await authedFetch(`${API_BASE}/api/v1/autofill/match`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fields: payload.fields,
+        url: payload.url,
+        job_context: payload.job_context ?? "",
+      }),
+    });
+    if (!res.ok) return { error: `API error ${res.status}` };
+    return await res.json();
+  } catch {
+    return { error: "API unavailable" };
+  }
+}
+
+async function smartMatch(payload: { fields: unknown[]; url: string; job_context?: string }) {
+  try {
+    if (!await getToken()) return { error: "Not signed in" };
+    const res = await authedFetch(`${API_BASE}/api/v1/autofill/smart-match`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -653,7 +723,7 @@ async function syncApplication(payload: {
 }) {
   try {
     if (!await getToken()) {
-      return { error: "Not logged in — please sign in via the ApplyFlow popup." };
+      return { error: "AUTH_REQUIRED" };
     }
     const res = await authedFetch(`${API_BASE}/api/v1/applications/`, {
       method: "POST",
@@ -670,7 +740,7 @@ async function syncApplication(payload: {
         external_job_id: payload.externalJobId,
       }),
     });
-    if (res.status === 401) return { error: "Session expired — please sign in again via the ApplyFlow popup." };
+    if (res.status === 401) return { error: "AUTH_REQUIRED" };
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       return { error: (err as { detail?: string }).detail ?? `HTTP ${res.status}` };
@@ -684,6 +754,43 @@ async function syncApplication(payload: {
     return { success: true, data };
   } catch {
     return { error: "API unavailable — is the server running?" };
+  }
+}
+
+// ── Field regeneration ────────────────────────────────────────────────────────
+
+async function regenerateField(payload: {
+  uid: string; kind: string; label: string;
+  current_value?: string; url?: string; page_text?: string;
+}) {
+  try {
+    if (!await getToken()) return { error: "AUTH_REQUIRED" };
+    const res = await authedFetch(`${API_BASE}/api/v1/autofill/regenerate-field`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) return { error: `HTTP ${res.status}` };
+    return await res.json();
+  } catch {
+    return { error: "API unavailable" };
+  }
+}
+
+// ── Auth (called from content scripts — avoids CORS) ─────────────────────────
+
+async function authLogin(payload: { email: string; password: string }) {
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.detail ?? "Invalid email or password" };
+    return { ok: true, data };
+  } catch {
+    return { error: "Could not connect to server" };
   }
 }
 

@@ -219,6 +219,60 @@ export const api = {
     delete: (id: string) =>
       request<{ deleted: string }>(`/api/v1/applications/${id}`, { method: "DELETE" }),
   },
+
+  jobs: {
+    searchFast: (q: string, location = "", filters: { date_posted?: string; job_type?: string; remote_only?: boolean; country?: string; providers?: string[] } = {}) =>
+      request<{
+        jobs: import("@/components/jobs/JobsPage").Job[];
+        provider_stats: Record<string, { status: "ok" | "error"; count: number; error: string | null }>;
+        duplicates_removed: number;
+        total_before_dedup: number;
+        providers: string[];
+      }>(
+        `/api/v1/jobs/search/fast?q=${encodeURIComponent(q)}&location=${encodeURIComponent(location)}&date_posted=${filters.date_posted ?? "week"}&job_type=${filters.job_type ?? ""}&remote_only=${filters.remote_only ?? false}&country=${filters.country ?? "in"}&providers=${(filters.providers ?? []).join(",")}`,
+        { method: "POST" },
+      ),
+    apifyStart: (q: string, location = "", filters: { remote_only?: boolean; country?: string } = {}) =>
+      request<{ runs: { run_id?: string; dataset_id?: string; actor?: string; label?: string; error?: string }[] }>(
+        `/api/v1/jobs/search/apify/start?q=${encodeURIComponent(q)}&location=${encodeURIComponent(location)}&remote_only=${filters.remote_only ?? false}&country=${filters.country ?? "in"}`,
+        { method: "POST" },
+      ),
+    apifyPoll: (run_id: string, dataset_id: string, actor: string, label = "") =>
+      request<{ status: string; jobs: import("@/components/jobs/JobsPage").Job[]; raw_count?: number; duplicates_removed?: number; label?: string }>(
+        `/api/v1/jobs/search/apify/results?run_id=${encodeURIComponent(run_id)}&dataset_id=${encodeURIComponent(dataset_id)}&actor=${encodeURIComponent(actor)}&label=${encodeURIComponent(label)}`,
+      ),
+    apifySchema: (actor_id: string) =>
+      request<{
+        actor: string; is_task: boolean; actor_name: string; description: string;
+        input_fields: { name: string; type: string; description: string; default: unknown; required: boolean; enum?: string[] }[];
+        suggested_mappings: Record<string, string | null>;
+      }>(`/api/v1/jobs/apify/schema?actor_id=${encodeURIComponent(actor_id)}`),
+
+    apifyMapOutput: (actor_id: string, sample_item: Record<string, unknown>) =>
+      request<{ mapping: Record<string, string | null>; confidence: Record<string, string> }>(
+        "/api/v1/jobs/apify/map-output",
+        { method: "POST", body: { actor_id, sample_item } },
+      ),
+
+    apifyTest: (actor_id: string, q = "software engineer") =>
+      request<{ ok: boolean; raw: Record<string, unknown>; mapped: import("@/components/jobs/JobsPage").Job; total: number; actor: string; warning?: string }>(
+        `/api/v1/jobs/apify/test?actor_id=${encodeURIComponent(actor_id)}&q=${encodeURIComponent(q)}`,
+        { method: "POST" },
+      ),
+    getConfigs: () =>
+      request<{ configs: { provider: string; enabled: boolean; configured: boolean; key_preview: string; app_id: string; actor_id: string; actors?: { id?: string; label?: string; actor_id?: string; enabled?: boolean }[] }[] }>(
+        "/api/v1/jobs/api-configs",
+      ),
+    saveConfigs: (configs: { provider: string; key: string; app_id?: string; actor_id?: string; enabled?: boolean }[]) =>
+      request<{ ok: boolean }>("/api/v1/jobs/api-configs", { method: "PUT", body: { configs } }),
+    // Legacy compat
+    getConfig: () =>
+      request<{ configured: boolean; provider?: string; key_preview?: string; app_id?: string }>(
+        "/api/v1/jobs/api-config",
+      ),
+    saveConfig: (cfg: { provider: string; key: string; app_id?: string; actor_id?: string }) =>
+      request<{ ok: boolean }>("/api/v1/jobs/api-config", { method: "PUT", body: cfg }),
+  },
 };
 
 // ── SSE streaming helpers ─────────────────────────────────────────────────────
@@ -245,6 +299,22 @@ async function* parseSSEStream(body: ReadableStream<Uint8Array>): AsyncGenerator
       }
     }
   }
+}
+
+export async function rewriteBullet(params: {
+  bullet: string;
+  jobDescription?: string;
+  role?: string;
+}): Promise<string> {
+  const data = await request<{ bullet: string }>("/api/v1/ai/rewrite-bullet", {
+    method: "POST",
+    body: {
+      bullet: params.bullet,
+      job_description: params.jobDescription ?? "",
+      role: params.role ?? "",
+    },
+  });
+  return data.bullet;
 }
 
 export async function* streamChat(message: string): AsyncGenerator<string> {

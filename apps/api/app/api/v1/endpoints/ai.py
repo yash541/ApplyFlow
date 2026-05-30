@@ -137,12 +137,46 @@ async def tailor_resume(
     client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
 
     system_prompt = """You are an expert resume writer and ATS optimization specialist.
-Given a resume and a job description, parse the resume and rewrite it with tailored content.
 
-Output ONLY valid JSON (no markdown fences, no explanation) with this exact structure:
+STEP 1 — ATS PARSER (do this silently before writing anything):
+Read the job description and extract every keyword, skill, tool, qualification,
+and requirement an ATS will scan for. Group them mentally into:
+  • Hard skills / technologies
+  • Soft skills / competencies
+  • Role-specific verbs and phrases
+  • Certifications, degrees, or clearances mentioned
+  • Years-of-experience thresholds
+
+STEP 2 — SCORE THE ORIGINAL RESUME:
+Count what percentage of those extracted ATS keywords already appear in the
+candidate's resume. Record this as ats_score_before (0–100).
+
+STEP 3 — REWRITE:
+Rewrite the resume bullets and summary to mirror the JD language naturally,
+keeping every real accomplishment intact. Do NOT invent experience.
+Mirror exact phrases where they fit; paraphrase where a direct copy would
+feel forced. Lead every bullet with a strong action verb. Quantify wherever
+the original gives you numbers to work with.
+
+STEP 4 — EXTRA SECTIONS:
+If the JD requires skills, certifications, or section types the candidate's
+resume is missing AND those gaps could be addressed with content from their
+background, add the relevant extra section(s) — e.g. Certifications, Projects,
+Languages, Publications, Awards, Volunteer Work. Only add sections that are
+genuinely supported by the candidate's experience; never fabricate credentials.
+
+STEP 5 — QUALITY CHECK:
+For each keyword you added, ask: would a human recruiter reading this bullet
+notice it feels stuffed or unnatural? If yes, add it to keyword_stuffing_flags
+so the user knows to review it manually.
+
+STEP 6 — SCORE THE TAILORED RESUME:
+Re-count ATS keyword coverage after your rewrites. Record as ats_score (0–100).
+
+Output ONLY valid JSON (no markdown fences, no explanation):
 {
   "name": "Full Name from resume",
-  "contact": {"email": "...", "phone": "...", "location": "...", "linkedin": "..."},
+  "contact": {"email": "...", "phone": "...", "location": "...", "linkedin": "...", "github": "...", "website": "..."},
   "summary": "2-3 sentence professional summary tailored to the role",
   "experience": [
     {
@@ -157,16 +191,26 @@ Output ONLY valid JSON (no markdown fences, no explanation) with this exact stru
   ],
   "skills": ["skill1", "skill2", "skill3"],
   "keywords_added": ["keyword1", "keyword2"],
-  "ats_score": 85
+  "ats_score_before": 42,
+  "ats_score": 87,
+  "keyword_stuffing_flags": ["phrase that felt forced", "another one"],
+  "customSections": [
+    {
+      "id": "custom_1",
+      "label": "Certifications",
+      "items": [
+        {"title": "AWS Solutions Architect – Associate", "subtitle": "Amazon Web Services, 2024", "bullets": []}
+      ]
+    }
+  ]
 }
 
 Rules:
-- Lead bullets with strong action verbs
-- Quantify achievements where possible (use % or numbers)
-- Naturally weave in keywords from the job description
-- Keep each bullet concise (under 2 lines)
-- If a field is absent from the resume, use an empty string or empty array
-- ats_score is 0-100 reflecting how well this tailored resume matches the job"""
+- customSections: only include if genuinely needed; use [] if no extra sections required
+- keyword_stuffing_flags: list exact phrases you added that a human might find unnatural; [] if none
+- ats_score_before and ats_score are integers 0–100
+- If a field is absent from the resume use an empty string or empty array
+- Never fabricate job titles, companies, dates, degrees, or certifications"""
 
     captured_resume_text = resume_text
     captured_job_description = job_description
@@ -175,7 +219,7 @@ Rules:
         try:
             with client.messages.stream(
                 model=settings.DEFAULT_AI_MODEL,
-                max_tokens=2048,
+                max_tokens=4096,
                 system=system_prompt,
                 messages=[
                     {
@@ -248,6 +292,87 @@ async def extract_job(
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"AI extraction failed: {exc}") from exc
+
+
+class BulletRewriteRequest(BaseModel):
+    bullet: str
+    job_description: str = ""
+    role: str = ""
+
+
+@router.post("/rewrite-bullet")
+async def rewrite_bullet(
+    request: BulletRewriteRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Rewrite a single resume bullet with stronger language aligned to the JD.
+    Returns plain text — the rewritten bullet only, no JSON wrapping."""
+    jd_context = f"\nJob description context:\n{request.job_description[:2000]}" if request.job_description else ""
+    role_context = f"\nRole: {request.role}" if request.role else ""
+
+    prompt = (
+        f"Rewrite this resume bullet to be stronger and more impactful."
+        f"{role_context}{jd_context}\n\n"
+        f"Current bullet:\n{request.bullet}\n\n"
+        "Rules:\n"
+        "- Start with a strong action verb\n"
+        "- Keep the same core achievement — never fabricate metrics or facts\n"
+        "- Quantify naturally if the original gives you numbers to work with\n"
+        "- Mirror relevant keywords from the job description without keyword stuffing\n"
+        "- Keep it concise — ideally under 200 characters\n"
+        "- Output ONLY the rewritten bullet text. No explanation, no bullet symbol, no quotes."
+    )
+
+    client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    try:
+        msg = client.messages.create(
+            model=settings.DEFAULT_AI_MODEL,
+            max_tokens=300,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        rewritten = msg.content[0].text.strip().lstrip("•-–").strip()
+        return {"bullet": rewritten}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"AI rewrite failed: {exc}") from exc
+
+
+class SummaryRewriteRequest(BaseModel):
+    summary: str
+    headline: str = ""
+    experience_titles: list[str] = []
+
+
+@router.post("/rewrite-summary")
+async def rewrite_summary(
+    request: SummaryRewriteRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Rewrite the 'tell us about yourself' summary to be more compelling."""
+    headline_ctx = f"\nHeadline: {request.headline}" if request.headline else ""
+    exp_ctx = f"\nRoles: {', '.join(request.experience_titles[:3])}" if request.experience_titles else ""
+
+    prompt = (
+        f"Rewrite this professional summary to be more compelling and impactful."
+        f"{headline_ctx}{exp_ctx}\n\n"
+        f"Current summary:\n{request.summary}\n\n"
+        "Rules:\n"
+        "- Keep it 2–4 sentences, first-person tone\n"
+        "- Lead with years of experience and strongest domain\n"
+        "- Highlight concrete value the person brings\n"
+        "- Keep all factual details — never fabricate\n"
+        "- Output ONLY the rewritten summary. No explanation, no quotes."
+    )
+
+    client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    try:
+        msg = client.messages.create(
+            model=settings.DEFAULT_AI_MODEL,
+            max_tokens=400,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return {"summary": msg.content[0].text.strip()}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"AI rewrite failed: {exc}") from exc
 
 
 @router.post("/chat")

@@ -9,7 +9,10 @@
     "type-check": "turbo type-check",
     "dev:web": "turbo dev --filter=web",
     "dev:api": "turbo dev --filter=api",
-    "build:extension": "turbo build --filter=extension"
+    "build:extension": "turbo build --filter=extension",
+    "test": "turbo test --filter=extension --filter=web && python3 -m pytest apps/api/tests/ -v",
+    "test:js": "turbo test --filter=extension --filter=web",
+    "test:api": "python3 -m pytest apps/api/tests/ -v"
   },
   "devDependencies": {
     "turbo": "^2.5.4",

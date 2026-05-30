@@ -142,11 +142,15 @@ function calcCompletion(name: string, data: MasterProfileData): number {
 // ── Work history editor ───────────────────────────────────────────────────────
 
 function ExperienceEditor({
-  experience, onChange,
+  experience, onChange, token,
 }: {
   experience: WorkEntry[];
   onChange: (v: WorkEntry[]) => void;
+  token: string | null;
 }) {
+  // Track which bullet is regenerating: "i-j" key
+  const [regenKey, setRegenKey] = useState<string | null>(null);
+
   function add() {
     onChange([...experience, { title: "", company: "", duration: "", current: false, bullets: [""] }]);
   }
@@ -165,6 +169,25 @@ function ExperienceEditor({
   }
   function removeBullet(i: number, j: number) {
     patch(i, "bullets", experience[i]!.bullets.filter((_, bIdx) => bIdx !== j));
+  }
+
+  async function regenBullet(i: number, j: number) {
+    const bullet = experience[i]!.bullets[j];
+    if (!bullet?.trim() || !token) return;
+    const key = `${i}-${j}`;
+    setRegenKey(key);
+    try {
+      const res = await fetch("http://localhost:8000/api/v1/ai/rewrite-bullet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ bullet, role: experience[i]!.title }),
+      });
+      if (!res.ok) return;
+      const data = await res.json() as { bullet?: string };
+      if (data.bullet) patchBullet(i, j, data.bullet);
+    } catch { /* silent */ } finally {
+      setRegenKey(null);
+    }
   }
 
   return (
@@ -197,20 +220,36 @@ function ExperienceEditor({
             />
           </div>
           <div className="space-y-1.5">
-            {job.bullets.map((b, j) => (
-              <div key={j} className="flex items-start gap-1.5">
-                <span className="text-primary/40 mt-2 text-xs shrink-0">•</span>
-                <input
-                  value={b}
-                  onChange={e => patchBullet(i, j, e.target.value)}
-                  placeholder="Achievement or responsibility…"
-                  className="flex-1 h-8 px-2.5 rounded-lg bg-white/5 border border-white/10 text-sm text-on-surface placeholder:text-on-surface-variant/30 focus:outline-none focus:border-primary/40 min-w-0"
-                />
-                <button onClick={() => removeBullet(i, j)} className="mt-1.5 text-on-surface-variant/20 hover:text-red-400 transition-colors shrink-0">
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ))}
+            {job.bullets.map((b, j) => {
+              const key = `${i}-${j}`;
+              const spinning = regenKey === key;
+              return (
+                <div key={j} className="flex items-start gap-1.5">
+                  <span className="text-primary/40 mt-2 text-xs shrink-0">•</span>
+                  <input
+                    value={b}
+                    onChange={e => patchBullet(i, j, e.target.value)}
+                    placeholder="Achievement or responsibility…"
+                    className="flex-1 h-8 px-2.5 rounded-lg bg-white/5 border border-white/10 text-sm text-on-surface placeholder:text-on-surface-variant/30 focus:outline-none focus:border-primary/40 min-w-0"
+                    disabled={spinning}
+                  />
+                  {/* Regenerate bullet */}
+                  <button
+                    onClick={() => void regenBullet(i, j)}
+                    disabled={spinning || !b.trim() || !token}
+                    title="Regenerate with AI"
+                    className="mt-1.5 text-primary/40 hover:text-primary disabled:opacity-20 transition-colors shrink-0"
+                  >
+                    {spinning
+                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      : <Sparkles className="h-3.5 w-3.5" />}
+                  </button>
+                  <button onClick={() => removeBullet(i, j)} className="mt-1.5 text-on-surface-variant/20 hover:text-red-400 transition-colors shrink-0">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              );
+            })}
             <button onClick={() => addBullet(i)} className="text-xs text-on-surface-variant/30 hover:text-primary/70 flex items-center gap-1 transition-colors">
               <Plus className="h-3 w-3" /> Add bullet
             </button>
@@ -343,6 +382,7 @@ export function MasterProfileForm() {
   const [error, setError] = useState("");
   const [showEEO, setShowEEO] = useState(false);
   const [newSkill, setNewSkill] = useState("");
+  const [summaryRegen, setSummaryRegen] = useState(false);
 
   const completion = calcCompletion(name, data);
 
@@ -358,6 +398,27 @@ export function MasterProfileForm() {
 
   function patch(updates: Partial<MasterProfileData>) {
     setData(prev => ({ ...prev, ...updates }));
+  }
+
+  async function regenSummary() {
+    if (!data.summary.trim() || !token) return;
+    setSummaryRegen(true);
+    try {
+      const res = await fetch("http://localhost:8000/api/v1/ai/rewrite-summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          summary: data.summary,
+          headline: data.headline,
+          experience_titles: data.experience.map(e => e.title).filter(Boolean),
+        }),
+      });
+      if (!res.ok) return;
+      const d = await res.json() as { summary?: string };
+      if (d.summary) patch({ summary: d.summary });
+    } catch { /* silent */ } finally {
+      setSummaryRegen(false);
+    }
   }
 
   async function handleSave() {
@@ -660,20 +721,35 @@ export function MasterProfileForm() {
               placeholder="e.g. Senior Software Engineer · Full-stack · Open to remote"
             />
           </Field>
-          <Field label="Tell us about yourself">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-medium text-on-surface-variant/60 uppercase tracking-wider">
+                Tell us about yourself
+              </label>
+              <button
+                onClick={() => void regenSummary()}
+                disabled={summaryRegen || !data.summary.trim() || !token}
+                title="Rewrite with AI"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/10 border border-primary/20 text-primary/70 hover:text-primary hover:bg-primary/20 disabled:opacity-30 transition-all text-xs font-medium"
+              >
+                {summaryRegen
+                  ? <><Loader2 className="h-3 w-3 animate-spin" /> Rewriting…</>
+                  : <><Sparkles className="h-3 w-3" /> ✨ Rewrite</>}
+              </button>
+            </div>
             <TextArea
               value={data.summary}
               onChange={v => patch({ summary: v })}
               placeholder="2–3 sentences. Used to fill 'About you' and open-ended intro fields on applications."
               rows={4}
             />
-          </Field>
+          </div>
         </div>
       </SectionCard>
 
       {/* ── Work History ────────────────────────────────────────────────────── */}
       <SectionCard title="Work History" icon={Briefcase}>
-        <ExperienceEditor experience={data.experience} onChange={v => patch({ experience: v })} />
+        <ExperienceEditor experience={data.experience} onChange={v => patch({ experience: v })} token={token ?? null} />
       </SectionCard>
 
       {/* ── Education ───────────────────────────────────────────────────────── */}

@@ -141,6 +141,9 @@ let currentRunId = 0;
 
 async function runInit(adapter: JobPortalAdapter): Promise<void> {
   if (!isExtensionValid()) return;
+  // Respect the enable/disable toggle from the popup
+  const { af_enabled } = await chrome.storage.local.get("af_enabled");
+  if (af_enabled === false) return;
 
   // Support optional confidence-based detection alongside the boolean isJobPage().
   // Existing adapters that only implement isJobPage() continue to work unchanged.
@@ -343,4 +346,26 @@ export function runPortal(adapter: JobPortalAdapter): void {
   if (adapter.watchNavigation) {
     adapter.watchNavigation(() => void runInit(adapter));
   }
+
+  // React to storage changes immediately — no page refresh needed.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== "local") return;
+
+    // Auth session cleared → re-render overlay in logged-out state
+    if (changes["session"] && !changes["session"].newValue && changes["session"].oldValue) {
+      void runInit(adapter);
+    }
+
+    // Extension toggled OFF → remove overlay immediately
+    if (changes["af_enabled"]) {
+      if (changes["af_enabled"].newValue === false) {
+        document.getElementById("applyflow-overlay")?.remove();
+        if (stopInterceptor) { stopInterceptor(); stopInterceptor = null; }
+        clearSession();
+      } else if (changes["af_enabled"].newValue === true) {
+        // Toggled back ON → restore overlay
+        void runInit(adapter);
+      }
+    }
+  });
 }

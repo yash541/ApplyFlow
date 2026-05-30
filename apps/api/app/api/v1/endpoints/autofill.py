@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 from typing import Any
@@ -242,13 +243,31 @@ async def match_fields(
                 ))
 
     # Pass 2: AI for summary / unknown fields
-    # Always emit a match entry for every ai_field so the review panel shows them
-    # even when the API key is absent or Claude returns null — the user can fill manually.
+    # Enrich job_context: prefer stored JD from the tracked application over the
+    # caller-supplied string, which is often empty when coming from the ATS form page.
+    effective_job_context = body.job_context or ""
+    if body.url and not effective_job_context:
+        try:
+            jd_result = await db.execute(
+                select(Application.job_description, Application.company, Application.role).where(
+                    Application.user_id == current_user.id,
+                    Application.job_url == body.url,
+                ).order_by(Application.applied_at.desc()).limit(1)
+            )
+            jd_row = jd_result.first()
+            if jd_row and jd_row.job_description:
+                effective_job_context = (
+                    f"Role: {jd_row.role} at {jd_row.company}\n\n"
+                    f"{jd_row.job_description[:3000]}"
+                )
+        except Exception:
+            pass  # best-effort — proceed without JD
+
     if ai_fields:
         ai_values: dict[str, str | None] = {}
         if settings.ANTHROPIC_API_KEY:
             try:
-                ai_values = _ai_match(ai_fields, profile, current_user.name, body.job_context)
+                ai_values = _ai_match(ai_fields, profile, current_user.name, effective_job_context)
             except Exception:
                 pass  # fall through with empty dict; fields still appear for manual fill
         for field in ai_fields:
@@ -290,3 +309,247 @@ async def match_fields(
                 best_resume_name = tailored.name
 
     return MatchResponse(matches=matches, resume_id=best_resume_id, resume_name=best_resume_name)
+
+
+# ── Single-field regenerate ───────────────────────────────────────────────────
+
+class RegenerateFieldRequest(BaseModel):
+    uid: str
+    kind: str
+    label: str
+    current_value: str = ""
+    url: str = ""                 # to look up stored JD
+    page_text: str = ""           # scraped page text as JD fallback (first 3000 chars)
+
+
+class RegenerateFieldResponse(BaseModel):
+    uid: str
+    value: str | None
+    confidence: float
+
+
+@router.post("/regenerate-field", response_model=RegenerateFieldResponse)
+async def regenerate_field(
+    body: RegenerateFieldRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Re-generate a single AI field with full JD context.
+    Priority for JD: stored application.job_description > scraped page_text > none.
+    """
+    # Load profile
+    profile_result = await db.execute(
+        select(UserProfile).where(UserProfile.user_id == current_user.id)
+    )
+    profile_row = profile_result.scalar_one_or_none()
+    profile = profile_row.data if profile_row else {}
+
+    # Build job context — prefer stored JD, fall back to page_text scrape
+    job_context = ""
+    if body.url:
+        try:
+            jd_result = await db.execute(
+                select(Application.job_description, Application.company, Application.role).where(
+                    Application.user_id == current_user.id,
+                    Application.job_url == body.url,
+                ).order_by(Application.applied_at.desc()).limit(1)
+            )
+            row = jd_result.first()
+            if row and row.job_description:
+                job_context = f"Role: {row.role} at {row.company}\n\n{row.job_description[:3000]}"
+        except Exception:
+            pass
+
+    if not job_context and body.page_text:
+        job_context = body.page_text[:3000]
+
+    # Build prompt
+    exp_lines = "\n".join(
+        f"  - {e.get('title','')} at {e.get('company','')} ({e.get('duration','')})"
+        for e in profile.get("experience", [])[:3]
+    )
+    skills_text = ", ".join(profile.get("skills", [])[:20])
+
+    profile_ctx = (
+        f"Name: {current_user.name}\n"
+        f"Headline: {profile.get('headline','')}\n"
+        f"Summary: {profile.get('summary','')}\n"
+        f"Experience:\n{exp_lines or '  (none)'}\n"
+        f"Skills: {skills_text or '(none)'}\n"
+        f"Years experience: {profile.get('years_experience','')}\n"
+    )
+
+    field_info = (
+        f"Field label: \"{body.label}\"\n"
+        f"Field kind: {body.kind}\n"
+        f"Current value (may be wrong): \"{body.current_value}\"\n"
+    )
+
+    jd_section = f"\nJob description context:\n{job_context}" if job_context else ""
+
+    prompt = (
+        "You are filling out a job application form on behalf of the candidate.\n\n"
+        f"Candidate profile:\n{profile_ctx}"
+        f"{jd_section}\n\n"
+        f"Field to fill:\n{field_info}\n"
+        "Rules:\n"
+        "- Provide the single best answer for this specific field\n"
+        "- Use the job description to pick the most appropriate option when relevant\n"
+        "- For experience/years dropdowns: pick the option that matches the candidate's actual experience\n"
+        "- Output ONLY the answer text, no explanation, no quotes\n"
+        "- If you truly cannot determine a value, output null\n\n"
+        "Answer:"
+    )
+
+    if not settings.ANTHROPIC_API_KEY:
+        return RegenerateFieldResponse(uid=body.uid, value=None, confidence=0.0)
+
+    try:
+        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+        msg = client.messages.create(
+            model=settings.DEFAULT_AI_MODEL,
+            max_tokens=256,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = msg.content[0].text.strip()
+        if raw.lower() in ("null", "none", ""):
+            return RegenerateFieldResponse(uid=body.uid, value=None, confidence=0.0)
+        return RegenerateFieldResponse(uid=body.uid, value=raw, confidence=0.85)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"AI regeneration failed: {exc}") from exc
+
+
+# ── Smart match ───────────────────────────────────────────────────────────────
+# New architecture: field detector scrapes raw questions + options.
+# We fire one concurrent Claude call per field (profile + question → answer).
+# Total latency = slowest single call, not the sum of all calls.
+
+class ScrapedFieldIn(BaseModel):
+    uid: str
+    question: str
+    field_type: str
+    options: list[str] = []
+    selector: str
+
+
+class SmartMatchRequest(BaseModel):
+    fields: list[ScrapedFieldIn]
+    url: str = ""
+    job_context: str = ""
+
+
+class SmartAnswerOut(BaseModel):
+    uid: str
+    answer: str
+    confidence: str  # "high" | "medium" | "low"
+    skipped: bool = False
+
+
+async def _answer_one_field(
+    field: ScrapedFieldIn,
+    profile: dict,
+    job_context: str,
+    client: anthropic.AsyncAnthropic,
+    model: str,
+) -> SmartAnswerOut:
+    """Ask Claude to answer a single form field given the user's profile."""
+
+    # File upload fields — Claude can't fill these, skip immediately
+    if field.field_type == "file":
+        return SmartAnswerOut(uid=field.uid, answer="", confidence="low", skipped=True)
+
+    # Build the options block for radio/select
+    options_block = ""
+    if field.options:
+        opts = "\n".join(f"  - {o}" for o in field.options)
+        options_block = f"\nAvailable options (pick exactly one):\n{opts}"
+
+    job_ctx = f"\nJob context: {job_context[:500]}" if job_context else ""
+
+    prompt = (
+        f"You are filling out a job application form on behalf of the candidate.\n"
+        f"Use ONLY the information provided in the profile below. Never fabricate facts.\n\n"
+        f"Profile:\n{json.dumps(profile, indent=2)[:3000]}\n"
+        f"{job_ctx}\n\n"
+        f"Form question: {field.question}"
+        f"{options_block}\n\n"
+        "Rules:\n"
+        "- If options are given, respond with EXACTLY one of the option strings and nothing else.\n"
+        "- For text/textarea fields, respond with a concise, accurate answer.\n"
+        "- If you truly cannot determine the answer from the profile, respond with: null\n\n"
+        "Answer:"
+    )
+
+    try:
+        msg = await client.messages.create(
+            model=model,
+            max_tokens=300,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = msg.content[0].text.strip()
+
+        if raw.lower() in ("null", "none", "n/a", ""):
+            return SmartAnswerOut(uid=field.uid, answer="", confidence="low", skipped=True)
+
+        # Validate option match for radio/select fields
+        if field.options:
+            # Case-insensitive match against provided options
+            match = next((o for o in field.options if o.lower() == raw.lower()), None)
+            if match:
+                return SmartAnswerOut(uid=field.uid, answer=match, confidence="high")
+            # Partial match fallback
+            partial = next((o for o in field.options if raw.lower() in o.lower() or o.lower() in raw.lower()), None)
+            if partial:
+                return SmartAnswerOut(uid=field.uid, answer=partial, confidence="medium")
+            # Claude returned something outside the options — use as-is but low confidence
+            return SmartAnswerOut(uid=field.uid, answer=raw, confidence="low")
+
+        confidence = "high" if len(raw) > 2 else "medium"
+        return SmartAnswerOut(uid=field.uid, answer=raw, confidence=confidence)
+
+    except Exception:
+        return SmartAnswerOut(uid=field.uid, answer="", confidence="low", skipped=True)
+
+
+@router.post("/smart-match")
+async def smart_match(
+    body: SmartMatchRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Answer all scraped form fields concurrently.
+    One Claude call per field, all fired in parallel.
+    Total latency ≈ slowest single field, not the sum.
+    """
+    # Load user profile
+    result = await db.execute(
+        select(UserProfile).where(UserProfile.user_id == current_user.id)
+    )
+    profile_row = result.scalar_one_or_none()
+    profile: dict = {}
+    if profile_row:
+        profile = profile_row.data or {}
+    profile["name"] = current_user.name
+    profile["email"] = current_user.email
+
+    if not settings.ANTHROPIC_API_KEY or not body.fields:
+        return {"answers": []}
+
+    client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+    model  = settings.DEFAULT_AI_MODEL
+
+    # Fire all fields concurrently
+    tasks = [
+        _answer_one_field(field, profile, body.job_context, client, model)
+        for field in body.fields
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    answers = []
+    for res in results:
+        if isinstance(res, SmartAnswerOut):
+            answers.append(res)
+
+    return {"answers": answers}

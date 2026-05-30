@@ -1,6 +1,6 @@
 import type { LinkedInJobData, ExtensionMessage } from "@applyflow/shared";
 import { showToast } from "./toast";
-import { showSignInPanel } from "../signin-panel";
+// signin-panel is no longer used — login happens via the web app (SSO)
 import type { JobFingerprint } from "../tracking/fingerprint";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -80,8 +80,15 @@ function buildTrackedSection(app: NonNullable<AppRecord>): string {
   `;
 }
 
-function signInAction() {
-  return { label: "Sign in →", onClick: () => showSignInPanel() };
+function openLogin() {
+  // Route through background — content scripts on CSP-strict pages (LinkedIn)
+  // can't call chrome.tabs.create directly.
+  chrome.runtime.sendMessage({ type: "OPEN_LOGIN" });
+}
+
+function loginRequiredToast() {
+  showToast("info", "Login required", "Sign in to ApplyFlow to continue.",
+    { label: "Log in →", onClick: openLogin }, 8000);
 }
 
 // ── Main overlay injector ─────────────────────────────────────────────────────
@@ -166,7 +173,7 @@ export function injectOverlay(
         } as ExtensionMessage,
         (res: { ok: boolean } | null) => {
           if (chrome.runtime.lastError || !res?.ok) {
-            showToast("error", "Sign in required", "Please sign in to ApplyFlow to continue.", signInAction());
+            loginRequiredToast();
           }
         },
       );
@@ -178,7 +185,7 @@ export function injectOverlay(
         { type: "OPEN_RESUME", payload: { resumeId: app.resume_id, applicationId: app.id } } as ExtensionMessage,
         (res: { ok: boolean } | null) => {
           if (chrome.runtime.lastError || !res?.ok) {
-            showToast("error", "Sign in required", "Please sign in to ApplyFlow to continue.", signInAction());
+            loginRequiredToast();
           }
         },
       );
@@ -210,7 +217,9 @@ export function injectOverlay(
           (res: { success?: boolean; error?: string; data?: AppRecord } | null) => {
             if (chrome.runtime.lastError || !res?.success) {
               if (btn) { btn.disabled = false; btn.textContent = `→ Move to ${PIPELINE_LABELS[nextStatus] ?? nextStatus}`; }
-              showToast("error", "Update failed", res?.error ?? "Could not update application status.");
+              if (!res || res.error === "AUTH_REQUIRED") { loginRequiredToast(); } else {
+                showToast("error", "Update failed", res.error ?? "Could not update status.");
+              }
               return;
             }
             currentApp = { ...currentApp, status: nextStatus };
@@ -246,7 +255,9 @@ export function injectOverlay(
       (response: { success?: boolean; error?: string; data?: { id?: string } } | null) => {
         if (chrome.runtime.lastError || !response?.success) {
           if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = "+ Track this job"; }
-          showToast("error", "Tracking failed", response?.error ?? "Could not save this job.", signInAction());
+          if (!response || response.error === "AUTH_REQUIRED") { loginRequiredToast(); } else {
+            showToast("error", "Tracking failed", response.error ?? "Could not save this job.");
+          }
           return;
         }
 

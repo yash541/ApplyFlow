@@ -1,9 +1,10 @@
 "use client";
 
-import { Bell, Search, LogOut } from "lucide-react";
+import { Search, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@applyflow/ui";
 import { useAuthStore } from "@/store/auth";
+import { NotificationBell } from "./NotificationBell";
 
 export function TopBar() {
   const router = useRouter();
@@ -31,10 +32,7 @@ export function TopBar() {
       </div>
 
       <div className="flex items-center gap-2 ml-auto">
-        <Button variant="ghost" size="icon" className="relative">
-          <Bell className="h-4 w-4" />
-          <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-primary" />
-        </Button>
+        <NotificationBell />
 
         <div className="flex items-center gap-2">
           <div className="h-8 w-8 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center">

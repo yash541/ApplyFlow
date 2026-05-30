@@ -13,7 +13,7 @@ afterEach(() => { vi.useRealTimers(); });
 // ── S-01: lastUpdatedAt is undefined → NaN comparison ────────────────────────
 
 describe("S-01: session with undefined lastUpdatedAt", () => {
-  it("NaN comparison does not falsely expire session", async () => {
+  it("session with missing lastUpdatedAt is treated as expired and cleared", async () => {
     // Inject a corrupt session missing lastUpdatedAt
     storageMock.session["af_apply_session"] = {
       sessionId: "corrupt-1",
@@ -30,16 +30,10 @@ describe("S-01: session with undefined lastUpdatedAt", () => {
     const { getApplySession } = await import("../content/runtime/application-session");
     const session = await getApplySession();
 
-    // Current behavior: NaN > 1_800_000 evaluates to false → session NOT expired
-    // This is a KNOWN BUG: the session should be treated as invalid when lastUpdatedAt is missing
-    // This test documents the current behavior; if fixed, update expectation to expect(session).toBeNull()
-    if (session !== null) {
-      // Bug present: corrupt session returned. Document it.
-      expect(session!.sessionId).toBe("corrupt-1");
-      console.warn("S-01 BUG: session with undefined lastUpdatedAt is not rejected");
-    }
-    // We don't assert pass/fail here — the test is documentation
-    // TODO: fix getApplySession to validate lastUpdatedAt exists before comparison
+    // S-01 FIX: typeof check catches undefined lastUpdatedAt → session expired immediately
+    expect(session).toBeNull();
+    // Also verify it was cleaned up from storage
+    expect(storageMock.session["af_apply_session"]).toBeUndefined();
   });
 
   it("demonstrates the NaN arithmetic issue", () => {
@@ -159,16 +153,9 @@ describe("S-04: token edge cases in authedFetch", () => {
 // ── S-05: af_notifications corruption guard ───────────────────────────────────
 
 describe("S-05: af_notifications storage corruption", () => {
-  it("non-array af_notifications causes .filter() crash", () => {
-    // Reproduce the crash that would happen in pushNotification
-    // if af_notifications was corrupted to an object
+  it("non-array af_notifications without guard causes .filter() crash (pre-fix behavior)", () => {
+    // Documents what WOULD happen without the Array.isArray guard
     const corruptData = { "0": { id: "n1" } }; // object, not array
-
-    // Current pushNotification code:
-    //   const list = (result["af_notifications"] ?? []) as AppNotification[];
-    //   next = [newNotification, ...list].slice(0, 20)
-    // The spread of a non-array object: [...{ "0": ... }] throws TypeError
-
     const list = (corruptData ?? []) as unknown[];
     let crashed = false;
     try {
@@ -177,11 +164,8 @@ describe("S-05: af_notifications storage corruption", () => {
     } catch {
       crashed = true;
     }
-
-    // Documents that the crash CAN happen; fix by adding Array.isArray check
-    // in pushNotification: const list = Array.isArray(stored) ? stored : [];
-    expect(crashed).toBe(true); // ← BUG: should be false after fix
-    // TODO: add Array.isArray guard in background/index.ts pushNotification
+    // Without guard: spread of plain object throws TypeError
+    expect(crashed).toBe(true); // confirms the bug existed
   });
 
   it("Array.isArray guard prevents crash", () => {

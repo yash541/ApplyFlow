@@ -94,7 +94,10 @@ export async function getApplySession(): Promise<ApplySession | null> {
     if (!session) return null;
 
     // Auto-expire stale sessions
-    if (Date.now() - session.lastUpdatedAt > SESSION_TIMEOUT_MS) {
+    // S-01 fix: if lastUpdatedAt is missing/undefined, Date.now() - undefined = NaN,
+    // and NaN > threshold = false, making the session immortal. Treat invalid
+    // timestamps as immediately expired.
+    if (typeof session.lastUpdatedAt !== "number" || Date.now() - session.lastUpdatedAt > SESSION_TIMEOUT_MS) {
       await clearApplySession();
       return null;
     }

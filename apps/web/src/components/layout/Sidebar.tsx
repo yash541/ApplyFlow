@@ -11,12 +11,14 @@ import {
   Zap,
   ChevronRight,
   UserCircle,
+  Search,
 } from "lucide-react";
 import { cn } from "@applyflow/ui";
 import { GradientText } from "@applyflow/ui";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Home", icon: LayoutDashboard },
+  { href: "/jobs", label: "Query Jobs", icon: Search },
   { href: "/resume", label: "Resume Lab", icon: FileText },
   { href: "/applications", label: "Applications", icon: Briefcase },
   { href: "/interview", label: "Preparation", icon: Mic },

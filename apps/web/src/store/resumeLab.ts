@@ -27,10 +27,13 @@ export interface TailoredContent {
   skills: string[];           // flat list — kept for backward compat
   skillGroups?: SkillGroup[]; // grouped — takes precedence when present
   keywords_added: string[];
-  ats_score: number;
+  ats_score: number;           // score after tailoring
+  ats_score_before?: number;   // original score before tailoring (new)
+  keyword_stuffing_flags?: string[]; // phrases Claude flagged as forced (new)
   // Section display name overrides (e.g. experience → "Work History")
   sectionNames?: Record<string, string>;
-  // User-added custom sections
+  // AI-generated extra sections (Certifications, Projects, Languages, etc.)
+  // + user-added custom sections — both use the same type
   customSections?: CustomSection[];
 }
 

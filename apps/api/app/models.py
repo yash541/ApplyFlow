@@ -21,6 +21,7 @@ class User(Base):
     resumes: Mapped[list["Resume"]] = relationship("Resume", back_populates="user", cascade="all, delete-orphan")
     applications: Mapped[list["Application"]] = relationship("Application", back_populates="user", cascade="all, delete-orphan")
     profile: Mapped["UserProfile | None"] = relationship("UserProfile", back_populates="user", cascade="all, delete-orphan", uselist=False)
+    notifications: Mapped[list["Notification"]] = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
 
 
 class UserProfile(Base):
@@ -144,3 +145,23 @@ class JobObservation(Base):
     signals: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     application: Mapped["Application"] = relationship("Application", back_populates="observations")
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+
+    # success | info | warning | error
+    type: Mapped[str] = mapped_column(String(20), nullable=False, default="info")
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    # Optional extra data (e.g. applicationId, resumeId) for deep-link actions
+    extra_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped["User"] = relationship("User", back_populates="notifications")

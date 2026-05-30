@@ -89,39 +89,38 @@ export function showSignInPanel(onSuccess?: () => void): void {
     submitEl.disabled = true;
     submitEl.textContent = "Signing in…";
     errEl.style.display = "none";
-    try {
-      const res  = await fetch(`${API_BASE}/api/v1/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await res.json() as {
-        access_token?: string;
-        user?: { id: string; name: string; email: string };
-        detail?: string;
-      };
-      if (!res.ok) {
-        errEl.textContent = data.detail ?? "Invalid email or password.";
-        errEl.style.display = "block";
-        submitEl.disabled = false;
-        submitEl.textContent = "Sign In →";
-        return;
-      }
-      chrome.storage.local.set({
-        session: {
-          token: data.access_token!,
-          user: { ...data.user!, plan: "free", createdAt: new Date().toISOString() },
-          expiresAt: new Date(Date.now() + 86400000).toISOString(),
-        },
-      });
-      panel.remove();
-      onSuccess?.();
-    } catch {
-      errEl.textContent = "Could not connect — is the server running?";
-      errEl.style.display = "block";
-      submitEl.disabled = false;
-      submitEl.textContent = "Sign In →";
-    }
+    // Route through background service worker to avoid CORS —
+    // content scripts run in the host page's origin (e.g. linkedin.com)
+    // which would be blocked by the API's CORS policy on a direct fetch.
+    chrome.runtime.sendMessage(
+      { type: "AUTH_LOGIN", payload: { email, password } },
+      (result: { ok?: boolean; data?: { access_token: string; user: { id: string; name: string; email: string } }; error?: string } | null) => {
+        if (chrome.runtime.lastError || !result) {
+          errEl.textContent = "Could not connect — is the server running?";
+          errEl.style.display = "block";
+          submitEl.disabled = false;
+          submitEl.textContent = "Sign In →";
+          return;
+        }
+        if (result.error || !result.ok) {
+          errEl.textContent = result.error ?? "Invalid email or password.";
+          errEl.style.display = "block";
+          submitEl.disabled = false;
+          submitEl.textContent = "Sign In →";
+          return;
+        }
+        const { data } = result;
+        chrome.storage.local.set({
+          session: {
+            token: data!.access_token,
+            user: { ...data!.user, plan: "free", createdAt: new Date().toISOString() },
+            expiresAt: new Date(Date.now() + 86400000).toISOString(),
+          },
+        });
+        panel.remove();
+        onSuccess?.();
+      },
+    );
   }
 
   submitEl.addEventListener("click", () => void submit());

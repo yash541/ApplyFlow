@@ -1,5 +1,4 @@
 import { scanFields } from "./field-detector";
-import { showSignInPanel } from "./signin-panel";
 import type { DetectedField, FieldMatch } from "@applyflow/shared";
 import { clearApplySession, createApplySession, getApplySession, updateApplySession, type ApplySession } from "./runtime/application-session";
 import { injectAssistant, updateAssistantStatus, destroyAssistant, isAssistantActive } from "./shared/application-assistant";
@@ -477,7 +476,8 @@ function renderDetectionPanel(
   });
   panel.querySelector(`#${AF_ID}-signin-btn`)?.addEventListener("click", () => {
     onClose();
-    showSignInPanel(() => void openPanel(fields));
+    chrome.runtime.sendMessage({ type: "OPEN_LOGIN" });
+    onClose();
   });
   return panel;
 }
@@ -536,6 +536,9 @@ function renderReviewSidebar(
       item.source === "ai"    ? `<span class="af-badge af-badge-ai">AI</span>` :
       item.source === "rules" ? `<span class="af-badge af-badge-rules">Profile</span>` :
                                 `<span class="af-badge af-badge-none">Manual</span>`;
+    const regenBtn = (item.source === "ai" || item.source === "none") && !isFile
+      ? `<button class="af-regen-btn" data-uid="${item.uid}" title="Regenerate with AI">↺</button>`
+      : "";
     const hasResumeToAttach = isFile && !!resumeId;
     const inputEl = isFile
       ? hasResumeToAttach
@@ -555,7 +558,7 @@ function renderReviewSidebar(
         <input type="checkbox" class="af-review-checkbox" data-uid="${item.uid}"
           ${isChecked ? "checked" : ""} ${!isEnabled ? "disabled" : ""}>
         <span class="af-review-label" title="${item.label}">${item.label}</span>
-        ${sourceBadge}
+        ${sourceBadge}${regenBtn}
       </div>
       ${inputEl}
     </div>`;
@@ -615,6 +618,53 @@ function renderReviewSidebar(
         applicationId: activeSession?.applicationId ?? undefined,
       },
     });
+  });
+
+  // ↺ Regenerate a single field with AI
+  panel.addEventListener("click", (e) => {
+    const btn = (e.target as HTMLElement).closest(".af-regen-btn") as HTMLButtonElement | null;
+    if (!btn) return;
+    const uid = btn.dataset["uid"];
+    const item = items.find(i => i.uid === uid);
+    if (!item || btn.disabled) return;
+
+    btn.disabled = true;
+    btn.textContent = "…";
+
+    const inputEl = panel.querySelector<HTMLInputElement | HTMLTextAreaElement>(
+      `[data-uid="${uid}"].af-review-input, [data-uid="${uid}"].af-review-textarea`
+    );
+    const currentValue = inputEl?.value ?? item.value;
+    const pageText = document.body.innerText.slice(0, 3000);
+
+    chrome.runtime.sendMessage(
+      {
+        type: "REGENERATE_FIELD",
+        payload: {
+          uid: item.uid,
+          kind: item.kind,
+          label: item.label,
+          current_value: currentValue,
+          url: window.location.href,
+          page_text: pageText,
+        },
+      },
+      (result: { uid?: string; value?: string | null; error?: string } | null) => {
+        btn.disabled = false;
+        btn.textContent = "↺";
+        if (chrome.runtime.lastError || !result || result.error) return;
+        if (result.value && inputEl) {
+          inputEl.value = result.value;
+          inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+          const cb = panel.querySelector<HTMLInputElement>(`.af-review-checkbox[data-uid="${uid}"]`);
+          if (cb) { cb.checked = true; panel.querySelector(`#${AF_ID}-item-${uid}`)?.classList.remove("af-excluded"); }
+          const prev = inputEl.style.borderColor;
+          inputEl.style.borderColor = "#6366f1";
+          setTimeout(() => { inputEl.style.borderColor = prev; }, 1200);
+          updateFillBtn();
+        }
+      },
+    );
   });
 
   panel.addEventListener("change", (e) => {
@@ -1268,6 +1318,17 @@ async function forceActivate(): Promise<boolean> {
 }
 
 function run() {
+  chrome.storage.local.get("af_enabled", ({ af_enabled }) => {
+    if (af_enabled === false) {
+      document.getElementById(`${AF_ID}-badge`)?.remove();
+      document.getElementById("af-activate-banner")?.remove();
+      return;
+    }
+    _runInternal();
+  });
+}
+
+function _runInternal() {
   // On LinkedIn, only activate when the Easy Apply modal is open
   if (IS_LINKEDIN && !linkedInModalOpen()) {
     // If modal just closed, remove the badge

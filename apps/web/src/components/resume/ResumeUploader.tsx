@@ -200,13 +200,18 @@ export function ResumeUploader() {
           </div>
         )}
 
-        {/* Tip when JD has content — encourage precision for better AI output */}
+        {/* Quality warning — shown when JD has content, prominent amber style */}
         {jobDesc.trim().length > 0 && (
-          <div className="flex items-start gap-3 px-3 py-2.5 rounded-xl bg-primary/10 border border-primary/20">
-            <span className="text-primary text-sm shrink-0 mt-0.5">💡</span>
-            <p className="text-label-sm text-on-surface-variant/70">
-              For best tailoring results, make sure the description includes specific skills, responsibilities, and requirements — not just a summary.
-            </p>
+          <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-500/12 border border-amber-500/40 shadow-sm">
+            <span className="text-amber-400 text-base shrink-0 mt-0.5">⚠️</span>
+            <div className="space-y-0.5">
+              <p className="text-label-sm font-semibold text-amber-300">
+                Better JD = Better Resume
+              </p>
+              <p className="text-label-sm text-amber-200/70 leading-relaxed">
+                Include specific skills, responsibilities, and requirements — not just a summary. The AI uses every keyword to tailor your bullets.
+              </p>
+            </div>
           </div>
         )}
 

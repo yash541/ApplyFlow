@@ -16,6 +16,10 @@
     },
     "type-check": {
       "dependsOn": ["^build"]
+    },
+    "test": {
+      "cache": false,
+      "outputs": []
     }
   }
 }

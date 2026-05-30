@@ -4,12 +4,14 @@ import { RecentApplications } from "@/components/dashboard/RecentApplications";
 import { AutofillProfilePanel } from "@/components/dashboard/AutofillProfilePanel";
 import { QuickActions } from "@/components/dashboard/QuickActions";
 import { UserGreeting } from "@/components/dashboard/UserGreeting";
+import { JobSearchWidget } from "@/components/dashboard/JobSearchWidget";
 
 export const metadata: Metadata = { title: "Home — ApplyFlow" };
 
 export default function DashboardPage() {
   return (
     <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
+      {/* Header */}
       <div>
         <h1 className="text-headline-md font-display font-bold text-on-surface">
           <UserGreeting />
@@ -19,16 +21,24 @@ export default function DashboardPage() {
         </p>
       </div>
 
+      {/* Stats */}
       <StatsRow />
 
+      {/* Main grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        {/* Left — main content */}
         <div className="lg:col-span-2 space-y-6">
           <RecentApplications />
           <QuickActions />
         </div>
-        <div>
+
+        {/* Right sidebar */}
+        <div className="space-y-5">
+          <JobSearchWidget />
           <AutofillProfilePanel />
         </div>
+
       </div>
     </div>
   );

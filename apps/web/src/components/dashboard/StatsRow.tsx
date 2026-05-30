@@ -1,6 +1,6 @@
 "use client";
 
-import { TrendingUp, Briefcase, Calendar, Target } from "lucide-react";
+import { TrendingUp, Briefcase, Calendar, Sparkles } from "lucide-react";
 import { GlassPanel } from "@applyflow/ui";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
@@ -14,13 +14,14 @@ export function StatsRow() {
   const apps = data?.applications ?? [];
   const total = apps.length;
   const interviews = apps.filter((a) => a.status === "interview" || a.status === "technical").length;
-  const active = apps.filter((a) => !["rejected", "withdrawn", "saved"].includes(a.status)).length;
-  const responseRate = total > 0 ? Math.round((active / total) * 100) : 0;
+  const applied = apps.filter((a) => ["applied","screening","interview","technical","offer"].includes(a.status)).length;
+  const tailored = apps.filter((a) => a.has_resume).length;
+  const responseRate = total > 0 ? Math.round((applied / total) * 100) : 0;
 
   const STATS = [
     { label: "Total Applications", value: String(total), icon: Briefcase, color: "text-primary", bg: "bg-primary/10" },
     { label: "Interviews", value: String(interviews), icon: Calendar, color: "text-secondary", bg: "bg-secondary/10" },
-    { label: "Active Pipeline", value: String(active), icon: Target, color: "text-success", bg: "bg-success/10" },
+    { label: "Resumes Tailored", value: String(tailored), icon: Sparkles, color: "text-violet-400", bg: "bg-violet-500/10" },
     { label: "Response Rate", value: `${responseRate}%`, icon: TrendingUp, color: "text-warning", bg: "bg-warning/10" },
   ];
 
