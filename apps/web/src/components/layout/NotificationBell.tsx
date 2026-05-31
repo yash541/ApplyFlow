@@ -4,6 +4,7 @@ import { Bell, X } from "lucide-react";
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useAuthStore } from "@/store/auth";
+import { API_URL } from "@/lib/config";
 
 type Notification = {
   id: string;
@@ -45,7 +46,7 @@ export function NotificationBell() {
   const fetchNotifications = useCallback(async () => {
     if (!token) return;
     try {
-      const res = await fetch("http://localhost:8000/api/v1/notifications/", {
+      const res = await fetch(`${API_URL}/api/v1/notifications/`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) setNotifications(await res.json() as Notification[]);
@@ -88,7 +89,7 @@ export function NotificationBell() {
     if (next && unread > 0) {
       setNotifications((p) => p.map((n) => ({ ...n, read: true })));
       try {
-        await fetch("http://localhost:8000/api/v1/notifications/mark-read", {
+        await fetch(`${API_URL}/api/v1/notifications/mark-read`, {
           method: "PATCH", headers: { Authorization: `Bearer ${token ?? ""}` },
         });
       } catch { /* silent */ }
@@ -98,7 +99,7 @@ export function NotificationBell() {
   async function markAllRead() {
     setNotifications((p) => p.map((n) => ({ ...n, read: true })));
     try {
-      await fetch("http://localhost:8000/api/v1/notifications/mark-read", {
+      await fetch(`${API_URL}/api/v1/notifications/mark-read`, {
         method: "PATCH", headers: { Authorization: `Bearer ${token ?? ""}` },
       });
     } catch { /* silent */ }

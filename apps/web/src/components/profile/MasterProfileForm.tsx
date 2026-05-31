@@ -7,6 +7,7 @@ import {
   Pencil, AlertCircle, DollarSign, Zap, FileText,
 } from "lucide-react";
 import { api, type MasterProfileData, type WorkEntry, type EducationEntry, type ResumeData } from "@/lib/api";
+import { API_URL } from "@/lib/config";
 import { useAuthStore } from "@/store/auth";
 
 // ── Defaults ─────────────────────────────────────────────────────────────────
@@ -177,7 +178,7 @@ function ExperienceEditor({
     const key = `${i}-${j}`;
     setRegenKey(key);
     try {
-      const res = await fetch("http://localhost:8000/api/v1/ai/rewrite-bullet", {
+      const res = await fetch(`${API_URL}/api/v1/ai/rewrite-bullet`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ bullet, role: experience[i]!.title }),
@@ -404,7 +405,7 @@ export function MasterProfileForm() {
     if (!data.summary.trim() || !token) return;
     setSummaryRegen(true);
     try {
-      const res = await fetch("http://localhost:8000/api/v1/ai/rewrite-summary", {
+      const res = await fetch(`${API_URL}/api/v1/ai/rewrite-summary`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({

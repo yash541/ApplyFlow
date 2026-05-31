@@ -22,6 +22,8 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       token: null,
       setAuth: (user, token) => {
+        // Clear any stale logout flag so auth-bridge doesn't wipe the new session
+        localStorage.removeItem("af_logout_at");
         localStorage.setItem("af_token", token);
         const session = {
           token,

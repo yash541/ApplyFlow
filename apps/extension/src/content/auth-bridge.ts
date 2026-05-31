@@ -25,6 +25,27 @@ function isExpired(session: SyncSession): boolean {
   return Date.now() > new Date(session.expiresAt).getTime();
 }
 
+// ── Direction 0: Web App → Extension on page load ────────────────────────────
+// Handles the "already logged in when extension loaded/reloaded" case.
+// The af_login event only fires during the login action itself — if the user
+// was already logged in, we need to proactively sync on each page load.
+
+const _existingWebSession = localStorage.getItem(SESSION_KEY);
+if (_existingWebSession) {
+  try {
+    const _ws = JSON.parse(_existingWebSession) as SyncSession;
+    if (_ws.token && !isExpired(_ws)) {
+      chrome.storage.local.get("session", (r) => {
+        const extS = r["session"] as SyncSession | undefined;
+        if (!extS?.token || isExpired(extS)) {
+          // Extension has no valid session but web app does — sync it now
+          chrome.storage.local.set({ session: _ws });
+        }
+      });
+    }
+  } catch { /* ignore malformed */ }
+}
+
 // ── Direction 1: Extension → Web App ─────────────────────────────────────────
 
 chrome.storage.local.get("session", (result) => {
