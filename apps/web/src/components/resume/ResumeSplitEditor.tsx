@@ -847,9 +847,10 @@ export function ResumeSplitEditor() {
             {/* Zoom controls */}
             <div className="flex items-center gap-0.5 border border-white/15 rounded-lg overflow-hidden">
               <button
-                onClick={() => setZoom(z => Math.max(0.5, +(z - 0.1).toFixed(1)))}
-                className="h-8 w-7 flex items-center justify-center text-white/50 hover:text-white hover:bg-white/8 transition-colors text-sm font-bold"
+                onClick={() => setZoom(z => Math.max(1.0, +(z - 0.1).toFixed(1)))}
+                className="h-8 w-7 flex items-center justify-center text-white/50 hover:text-white hover:bg-white/8 transition-colors text-sm font-bold disabled:opacity-30"
                 title="Zoom out"
+                disabled={zoom <= 1.0}
               >−</button>
               <button
                 onClick={() => setZoom(1.0)}
@@ -951,21 +952,7 @@ export function ResumeSplitEditor() {
             </div>
           )}
 
-          {/* Zoom OUT (<100%): scale from top-center so PDF is horizontally centered */}
-          {zoom < 1 && previewSize.w > 0 && (
-            <div style={{
-              position: "absolute", top: 0, left: 0,
-              width: previewSize.w, height: previewSize.h,
-              transform: `scale(${zoom})`, transformOrigin: "top center",
-            }}>
-              <PdfViewer
-                templateId={selectedTemplate} accentColor={accentColor} fontStyle={fontStyle}
-                compact={compact} layout={layout} sectionOrder={visibleOrder}
-                columnMap={selectedTemplate === "modern" ? columnMap : undefined}
-                content={content} onBlobReady={(blob) => { latestBlobRef.current = blob; }}
-              />
-            </div>
-          )}
+          {/* zoom < 1 is now disabled (min = 1.0), so no zoom-out branch needed */}
         </div>
 
         {analysis && (
