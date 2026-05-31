@@ -139,6 +139,10 @@ let stopInterceptor: (() => void) | null = null;
 // (user clicking through jobs faster than API round-trips complete).
 let currentRunId = 0;
 
+// Score cache keyed by job URL — so re-runs of runInit (SPA navigation noise,
+// post-save re-render) reuse the resolved score instead of resetting to 0.
+const scoreCache = new Map<string, { score: number; basis: string }>();
+
 async function runInit(adapter: JobPortalAdapter): Promise<void> {
   if (!isExtensionValid()) return;
   // Respect the enable/disable toggle from the popup
@@ -188,7 +192,7 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
   );
 
   // AI fallback — when every DOM scrape attempt fails (portal changed its
-  // layout, React still loading, selector mismatch), ask Claude to extract
+  // layout, React still loading, selector mismatch), ask ApplyFlow AI to extract
   // job data from the page's raw text.
   let extractionMethod = "dom";
   if (!result && runId === currentRunId) {
@@ -254,11 +258,16 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
           } as ExtensionMessage);
         };
 
-        // ── Phase 1: inject overlay IMMEDIATELY with loading state ─────────────
-        // The user sees the panel right away — score counts up while Claude runs.
-        injectOverlay(0, jobData, existing ?? null, fingerprint, onAppSaved, "loading");
+        // ── Phase 1: inject overlay IMMEDIATELY ───────────────────────────────
+        // Reuse cached score if runInit re-fired for the same URL (SPA noise, post-save).
+        // Otherwise start at 0 with animation.
+        const cached   = scoreCache.get(jobData.url);
+        const initScore = cached?.score ?? 0;
+        const initBasis = cached?.basis ?? "loading";
+        injectOverlay(initScore, jobData, existing ?? null, fingerprint, onAppSaved, initBasis);
+        if (cached) updateOverlayScore(cached.score, cached.basis);
         runtimeState.transition(existing?.id ? RuntimeState.TRACKING : RuntimeState.READY);
-        track("overlay_injected", { portal, score: 0, scoreBasis: "loading", hasExisting: !!existing?.id });
+        track("overlay_injected", { portal, score: initScore, scoreBasis: initBasis, hasExisting: !!existing?.id });
 
         // Start apply interceptor immediately (doesn't need the score)
         stopInterceptor = startApplyInterceptor({
@@ -273,13 +282,16 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
         }
 
         // ── Phase 2: fetch real score in background ────────────────────────────
-        // When Claude responds, animate the score to the real value.
+        // When ApplyFlow AI responds, animate the score to the real value.
         chrome.runtime.sendMessage(
           { type: "ANALYZE_JOB", payload: jobData } as ExtensionMessage,
           (scoreRes: { overall_score?: number; overallScore?: number; score_basis?: string } | null) => {
             if (chrome.runtime.lastError || runId !== currentRunId) return;
             resolvedScore = scoreRes?.overall_score ?? scoreRes?.overallScore ?? Math.floor(Math.random() * 30) + 65;
             resolvedBasis = scoreRes?.score_basis ?? "full_jd";
+
+            // Cache so re-runs of runInit for this URL skip the 0→score animation
+            scoreCache.set(jobData.url, { score: resolvedScore, basis: resolvedBasis });
 
             // Animate the displayed score to the real value
             updateOverlayScore(resolvedScore, resolvedBasis);
