@@ -9,7 +9,7 @@
  * waitingForNextStep / lastFilledKey logic, not a replacement.
  */
 
-import type { DetectedField } from "@applyflow/shared";
+import type { ScrapedField } from "@applyflow/shared";
 
 export type FormStep = {
   stepHash: string;
@@ -25,7 +25,7 @@ const completedSteps = new Map<string, FormStep>();
  * Compute a deterministic hash for a field set by sorting and joining selectors.
  * Same as autofill.ts's getFieldsKey — kept separate to avoid coupling.
  */
-export function computeStepHash(fields: DetectedField[]): string {
+export function computeStepHash(fields: ScrapedField[]): string {
   return fields
     .map((f) => f.selector)
     .sort()
@@ -36,7 +36,7 @@ export function isStepCompleted(stepHash: string): boolean {
   return completedSteps.get(stepHash)?.completed ?? false;
 }
 
-export function markStepCompleted(stepHash: string, fields: DetectedField[]): void {
+export function markStepCompleted(stepHash: string, fields: ScrapedField[]): void {
   completedSteps.set(stepHash, {
     stepHash,
     fieldCount: fields.length,

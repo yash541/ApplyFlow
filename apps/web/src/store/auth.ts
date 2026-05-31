@@ -39,11 +39,18 @@ export const useAuthStore = create<AuthState>()(
       clearAuth: () => {
         localStorage.removeItem("af_token");
         localStorage.removeItem("af_session");
+
         // Notify the auth-bridge content script in the same tab
         // (storage event doesn't fire for same-tab changes)
         if (typeof window !== "undefined") {
           window.dispatchEvent(new CustomEvent("af_logout"));
         }
+
+        // Belt-and-suspenders: also set a logout_at timestamp in localStorage.
+        // auth-bridge checks this on every page load, so even if the tab unloads
+        // before the custom event is handled, the next page load clears the session.
+        localStorage.setItem("af_logout_at", Date.now().toString());
+
         set({ user: null, token: null });
       },
     }),

@@ -1,80 +1,59 @@
-import type { DetectedField, FieldKind } from "@applyflow/shared";
+import type { ScrapedField } from "@applyflow/shared";
 
-// ── Classification rules ──────────────────────────────────────────────────────
+// ── Generic hint filter ───────────────────────────────────────────────────────
+// Strings that are UI hints, not real question text.
 
-type Rule = { kind: FieldKind; patterns: RegExp[] };
+const GENERIC_HINTS = new Set([
+  "your answer", "enter your answer", "type your answer",
+  "type here", "enter here", "enter text", "enter value",
+  "type your response", "enter your response", "your response",
+  "answer", "response", "write here", "add your answer",
+  "please type your answer", "please enter", "start typing",
+  "write your answer", "add a comment", "add comment",
+]);
 
-const RULES: Rule[] = [
-  // Identity
-  { kind: "email",       patterns: [/\bemail\b/i, /\be-mail\b/i] },
-  { kind: "phone",       patterns: [/\bphone\b/i, /\bmobile\b/i, /\btelephone\b/i, /\btel\b/i, /\bcontact.?num/i] },
-  { kind: "full_name",   patterns: [/\bfull.?name\b/i, /\byour.?name\b/i, /\bname\b/i] },
-  { kind: "first_name",  patterns: [/\bfirst.?name\b/i, /\bgiven.?name\b/i, /\bforename\b/i] },
-  { kind: "last_name",   patterns: [/\blast.?name\b/i, /\bsurname\b/i, /\bfamily.?name\b/i] },
-  // Location
-  { kind: "location",    patterns: [/\blocation\b/i, /\bcurrent.?location\b/i, /\baddress\b/i] },
-  { kind: "city",        patterns: [/\bcity\b/i, /\btown\b/i] },
-  { kind: "state",       patterns: [/\bstate\b/i, /\bprovince\b/i, /\bregion\b/i] },
-  { kind: "country",     patterns: [/\bcountry\b/i] },
-  { kind: "zip",         patterns: [/\bzip\b/i, /\bpostal.?code\b/i, /\bpostcode\b/i] },
-  // Social / URLs
-  { kind: "linkedin",    patterns: [/\blinkedin\b/i, /linkedin\.com/i] },
-  { kind: "github",      patterns: [/\bgithub\b/i, /github\.com/i] },
-  { kind: "website",     patterns: [/\bwebsite\b/i, /\bportfolio\b/i, /\bpersonal.?url\b/i, /\bhomepage\b/i] },
-  // Professional
-  { kind: "headline",    patterns: [/\bheadline\b/i, /\bcurrent.?title\b/i, /\bjob.?title\b/i] },
-  { kind: "summary",     patterns: [/\bsummary\b/i, /\bcover.?letter\b/i, /\babout.?you\b/i, /\bbio\b/i, /\bdescribe.?yourself\b/i, /\bprofessional.?statement\b/i] },
-  // Application Q&A
-  { kind: "work_auth",         patterns: [/\bwork.?auth\b/i, /\bauthorized.?to.?work\b/i, /\blegal.?right\b/i, /\beligib.+work\b/i, /\bwork.?eligib\b/i] },
-  { kind: "requires_sponsorship", patterns: [/\bsponsor\b/i, /\bvisa.?sponsor\b/i, /\brequire.+sponsor\b/i] },
-  { kind: "salary",            patterns: [/\bsalary\b/i, /\bcompensation\b/i, /\bpay.?expect\b/i, /\bexpected.?pay\b/i, /\bdesired.?salary\b/i] },
-  { kind: "years_experience",  patterns: [/\byears?.?of.?exp\b/i, /\byears?.?exp\b/i, /\bexp.+years\b/i] },
-  { kind: "notice_period",     patterns: [/\bnotice.?period\b/i, /\bnotice\b/i, /\bavailability\b/i, /\bwhen.+start\b/i, /\bstart.?date\b/i] },
-  { kind: "remote_preference", patterns: [/\bremote\b/i, /\bhybrid\b/i, /\bwork.+arrangement\b/i, /\bwork.+type\b/i] },
-  { kind: "willing_to_relocate", patterns: [/\brelocat\b/i, /\bwilling.+move\b/i] },
-  // EEO
-  { kind: "gender",     patterns: [/\bgender\b/i] },
-  { kind: "ethnicity",  patterns: [/\bethnicit\b/i, /\brace\b/i, /\bracial.?origin\b/i] },
-  { kind: "disability", patterns: [/\bdisabilit\b/i] },
-  { kind: "veteran",    patterns: [/\bveteran\b/i, /\bmilitar\b/i, /\bprotect.+veteran\b/i] },
-  // File
-  { kind: "resume_file", patterns: [/\bresume\b/i, /\bcurriculum.?vitae\b/i, /\b\bcv\b\b/i, /\bupload.+doc\b/i] },
-];
+function isGenericHint(t: string): boolean {
+  return GENERIC_HINTS.has(t.toLowerCase().trim().replace(/\s+/g, " "));
+}
 
-// ── Label extraction ──────────────────────────────────────────────────────────
+// ── Attribute normalisation ───────────────────────────────────────────────────
+// camelCase / snake_case / bracket-notation → spaced words.
+// Used as a last-resort label when no visible text is found.
 
-function extractLabel(el: HTMLElement): string {
-  const inputType = (el as HTMLInputElement).type?.toLowerCase();
+function normaliseAttr(raw: string): string {
+  const m = raw.match(/\[([^\]]+)\]$/);
+  const token = m ? m[1]! : raw;
+  return token
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[_\-.]/g, " ")
+    .toLowerCase()
+    .trim();
+}
 
-  // Radio buttons: label[for] returns the option text ("Yes"/"No"), not the question.
-  // Instead walk up the tree to find the question label from a fieldset legend or sibling heading.
-  if (inputType === "radio") {
+// ── Question extraction ───────────────────────────────────────────────────────
+// Returns the human-readable question text for a form element.
+
+function extractQuestion(el: HTMLElement): string {
+  const type = (el as HTMLInputElement).type?.toLowerCase();
+
+  // Radio: question is in a fieldset legend or a heading ancestor
+  if (type === "radio") {
     const legend = el.closest("fieldset")?.querySelector("legend");
     if (legend) return legend.innerText.trim();
-    // Walk up to 5 levels to find a preceding label-like sibling (LinkedIn's aria-less structure)
+
     let node: HTMLElement | null = el.parentElement;
-    for (let depth = 0; depth < 5 && node; depth++, node = node.parentElement) {
+    for (let d = 0; d < 10 && node; d++, node = node.parentElement) {
       const sibs = Array.from(node.parentElement?.children ?? []);
-      const idx = sibs.indexOf(node);
+      const idx  = sibs.indexOf(node);
       for (let i = idx - 1; i >= 0; i--) {
         const sib = sibs[i] as HTMLElement;
-        if (["LABEL", "SPAN", "DIV", "P", "LEGEND", "H3", "H4"].includes(sib.tagName)) {
+        if (["LABEL","SPAN","DIV","P","H1","H2","H3","H4","H5","LEGEND"].includes(sib.tagName)) {
           const text = sib.innerText?.trim();
-          if (text && text.length > 4 && text.length < 150) return text;
+          if (text && text.length > 3 && text.length < 200 && !isGenericHint(text)) return text;
         }
       }
     }
-    // aria-label / aria-labelledby on the input itself
-    const ariaL = el.getAttribute("aria-label");
-    if (ariaL) return ariaL.trim();
-    const lblBy = el.getAttribute("aria-labelledby");
-    if (lblBy) {
-      const t = lblBy.split(" ").map((id) => document.getElementById(id)?.innerText ?? "").join(" ").trim();
-      if (t) return t;
-    }
-    // Last resort: name attribute
-    const nm = (el as HTMLInputElement).name ?? "";
-    return nm.replace(/[_\-]/g, " ").trim();
+    return el.getAttribute("aria-label")?.trim() ?? "";
   }
 
   // 1. <label for="id">
@@ -82,76 +61,84 @@ function extractLabel(el: HTMLElement): string {
     const lbl = document.querySelector<HTMLLabelElement>(`label[for="${CSS.escape(el.id)}"]`);
     if (lbl) return lbl.innerText.trim();
   }
-  // 2. Wrapping <label>
-  const wrapping = el.closest("label");
-  if (wrapping) return wrapping.innerText.replace((el as HTMLInputElement).value ?? "", "").trim();
 
-  // 3. aria-label / aria-labelledby
-  const ariaLabel = el.getAttribute("aria-label");
-  if (ariaLabel) return ariaLabel.trim();
-  const labelledBy = el.getAttribute("aria-labelledby");
-  if (labelledBy) {
-    const parts = labelledBy.split(" ").map((id) => document.getElementById(id)?.innerText ?? "");
-    const joined = parts.join(" ").trim();
-    if (joined) return joined;
+  // 2. Wrapping <label>
+  const wrap = el.closest("label");
+  if (wrap) {
+    const text = wrap.innerText.replace((el as HTMLInputElement).value ?? "", "").trim();
+    if (text) return text;
   }
 
-  // 4. Nearest preceding sibling / parent text (e.g. Workday <div> labels)
+  // 3. aria-label / aria-labelledby
+  const al = el.getAttribute("aria-label");
+  if (al && !isGenericHint(al)) return al.trim();
+
+  const alby = el.getAttribute("aria-labelledby");
+  if (alby) {
+    const text = alby.split(" ")
+      .map(id => document.getElementById(id)?.innerText ?? "")
+      .join(" ").trim();
+    if (text && !isGenericHint(text)) return text;
+  }
+
+  // 4. Preceding sibling text (Workday, Dayforce, etc.)
   const parent = el.parentElement;
   if (parent) {
-    // Check for a label-like sibling that comes before the field
     const sibs = Array.from(parent.children);
-    const idx = sibs.indexOf(el);
+    const idx  = sibs.indexOf(el);
     for (let i = idx - 1; i >= 0; i--) {
       const sib = sibs[i] as HTMLElement;
-      if (["LABEL", "SPAN", "DIV", "P", "LEGEND"].includes(sib.tagName)) {
+      if (["LABEL","SPAN","DIV","P","LEGEND"].includes(sib.tagName)) {
         const text = sib.innerText?.trim();
-        if (text && text.length < 120) return text;
+        if (text && text.length < 200 && !isGenericHint(text)) return text;
       }
     }
-    // Fieldset legend
     const legend = el.closest("fieldset")?.querySelector("legend");
     if (legend) return legend.innerText.trim();
   }
 
-  // 5. placeholder / name / id as last resort
-  const placeholder = (el as HTMLInputElement).placeholder;
-  if (placeholder) return placeholder.trim();
-  const name = el.getAttribute("name") ?? el.id ?? "";
-  return name.replace(/[_\-]/g, " ").trim();
+  // 5. Non-generic placeholder
+  const ph = (el as HTMLInputElement).placeholder ?? "";
+  if (ph && !isGenericHint(ph)) return ph.trim();
+
+  // 6. name / id attribute as readable words
+  const name = el.getAttribute("name") ?? "";
+  if (name && !name.startsWith("entry.")) return normaliseAttr(name);
+  if (el.id && !/^\d/.test(el.id)) return normaliseAttr(el.id);
+
+  return "";
 }
 
-// ── Classifier ────────────────────────────────────────────────────────────────
+// ── Options extraction ────────────────────────────────────────────────────────
+// For radio groups and <select> elements, collect all choice texts.
 
-function classify(el: HTMLElement, label: string): { kind: FieldKind; confidence: number } {
-  const inputType = (el as HTMLInputElement).type?.toLowerCase() ?? "";
-
-  // Hard type signals
-  if (inputType === "email") return { kind: "email", confidence: 1.0 };
-  if (inputType === "tel")   return { kind: "phone", confidence: 0.9 };
-  if (inputType === "file")  return { kind: "resume_file", confidence: 0.8 };
-  if (inputType === "hidden") return { kind: "unknown", confidence: 0 };
-
-  // Build signal text: label + name attr + id + placeholder
-  const name        = el.getAttribute("name") ?? "";
-  const id          = el.id ?? "";
-  const placeholder = (el as HTMLInputElement).placeholder ?? "";
-  const signal      = [label, name, id, placeholder].join(" ");
-
-  for (const rule of RULES) {
-    for (const pat of rule.patterns) {
-      if (pat.test(signal)) {
-        // Reward stronger matches (label > name/id > placeholder)
-        const inLabel = pat.test(label) ? 0.2 : 0;
-        return { kind: rule.kind, confidence: Math.min(0.95, 0.7 + inLabel) };
-      }
-    }
+function extractOptions(el: HTMLElement): string[] {
+  if (el.tagName === "SELECT") {
+    return Array.from((el as HTMLSelectElement).options)
+      .filter(o => o.value !== "" && !isGenericHint(o.text))
+      .map(o => o.text.trim())
+      .filter(Boolean);
   }
 
-  // Textarea fallback — likely a cover letter / long answer
-  if (el.tagName === "TEXTAREA") return { kind: "summary", confidence: 0.3 };
+  if ((el as HTMLInputElement).type?.toLowerCase() === "radio") {
+    const name = (el as HTMLInputElement).name;
+    if (!name) return [];
+    return Array.from(
+      document.querySelectorAll<HTMLInputElement>(`input[type="radio"][name="${CSS.escape(name)}"]`)
+    ).map(r => {
+      const lbl = r.id
+        ? document.querySelector<HTMLLabelElement>(`label[for="${CSS.escape(r.id)}"]`)
+        : null;
+      return (
+        lbl?.innerText ??
+        r.closest("label")?.innerText ??
+        r.getAttribute("aria-label") ??
+        r.value ?? ""
+      ).trim();
+    }).filter(Boolean);
+  }
 
-  return { kind: "unknown", confidence: 0 };
+  return [];
 }
 
 // ── Selector builder ──────────────────────────────────────────────────────────
@@ -160,66 +147,71 @@ function buildSelector(el: HTMLElement): string {
   if (el.id) return `#${CSS.escape(el.id)}`;
   const name = el.getAttribute("name");
   if (name) return `${el.tagName.toLowerCase()}[name="${CSS.escape(name)}"]`;
-  // Structural: tag + nth-of-type among siblings
   const parent = el.parentElement;
   if (!parent) return el.tagName.toLowerCase();
-  const siblings = Array.from(parent.children).filter((c) => c.tagName === el.tagName);
+  const siblings = Array.from(parent.children).filter(c => c.tagName === el.tagName);
   const idx = siblings.indexOf(el) + 1;
-  return `${buildSelector(parent as HTMLElement) } > ${el.tagName.toLowerCase()}:nth-of-type(${idx})`;
+  return `${buildSelector(parent as HTMLElement)} > ${el.tagName.toLowerCase()}:nth-of-type(${idx})`;
 }
 
-// ── Visibility check ─────────────────────────────────────────────────────────
+// ── Visibility ────────────────────────────────────────────────────────────────
 
 function isVisible(el: HTMLElement): boolean {
-  const inputType = (el as HTMLInputElement).type?.toLowerCase();
-  // File and radio inputs are often hidden by ATS/LinkedIn with opacity:0 or 0×0 sizing.
-  // File inputs are filled via DataTransfer; radio inputs via fillRadio() — both work programmatically.
-  if (inputType === "file" || inputType === "radio") return true;
-
-  const style = window.getComputedStyle(el);
-  if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") return false;
-  const rect = el.getBoundingClientRect();
-  return rect.width > 0 && rect.height > 0;
+  const type = (el as HTMLInputElement).type?.toLowerCase();
+  if (type === "file" || type === "radio") return true; // filled programmatically
+  const s = window.getComputedStyle(el);
+  if (s.display === "none" || s.visibility === "hidden" || s.opacity === "0") return false;
+  const r = el.getBoundingClientRect();
+  return r.width > 0 && r.height > 0;
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export function scanFields(root: ParentNode = document): DetectedField[] {
+/**
+ * Scan all fillable form fields on the page and return a flat list of
+ * ScrapedField — one per logical question (radio groups deduplicated).
+ *
+ * The detector does NOT classify fields or suggest answers.
+ * It only extracts the question text and available options.
+ */
+export function scanFields(root: ParentNode = document): ScrapedField[] {
   const candidates = Array.from(
     root.querySelectorAll<HTMLElement>("input, textarea, select"),
-  ).filter((el) => {
+  ).filter(el => {
     const type = (el as HTMLInputElement).type?.toLowerCase();
     return type !== "hidden" && type !== "submit" && type !== "button" &&
            type !== "reset"  && type !== "checkbox" && type !== "image" &&
            isVisible(el);
   });
 
-  const seen = new Set<string>();
-  const seenRadioGroups = new Set<string>(); // deduplicate radio groups by name
-  const fields: DetectedField[] = [];
+  const seen            = new Set<string>();
+  const seenRadioGroups = new Set<string>();
+  const fields: ScrapedField[] = [];
 
   for (const el of candidates) {
-    // For radio inputs: only process the first input in each name group.
-    // fillRadio() queries the whole group by name, so one representative is enough.
-    if ((el as HTMLInputElement).type?.toLowerCase() === "radio") {
+    const type = (el as HTMLInputElement).type?.toLowerCase();
+
+    // Deduplicate radio groups — one representative per question
+    if (type === "radio") {
       const name = (el as HTMLInputElement).name ?? "";
-      if (!name || seenRadioGroups.has(name)) continue;
-      seenRadioGroups.add(name);
+      const key  = name || buildSelector(el);
+      if (seenRadioGroups.has(key)) continue;
+      seenRadioGroups.add(key);
     }
 
     const selector = buildSelector(el);
     if (seen.has(selector)) continue;
     seen.add(selector);
 
-    const label = extractLabel(el);
-    const { kind, confidence } = classify(el, label);
+    let fieldType = type || el.tagName.toLowerCase();
+    if (el.tagName === "SELECT")   fieldType = "select";
+    if (el.tagName === "TEXTAREA") fieldType = "textarea";
 
     fields.push({
-      uid: crypto.randomUUID(),
-      kind,
-      confidence,
-      inputType: (el as HTMLInputElement).type ?? el.tagName.toLowerCase(),
-      label: label || "(no label)",
+      uid:       crypto.randomUUID(),
+      question:  extractQuestion(el) || "(no label)",
+      fieldType,
+      options:   extractOptions(el),
       selector,
     });
   }

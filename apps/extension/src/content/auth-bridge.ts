@@ -83,14 +83,18 @@ window.addEventListener("storage", (e) => {
   }
 });
 
-// Case C: Page loaded after logout (e.g. user navigated away and back) —
-// verify the extension session is still valid against localStorage.
+// Case C: Page loaded — sync extension session with web app state.
+// Handles: user closed tab without logging out, navigation race on logout, etc.
 const currentSession = localStorage.getItem(SESSION_KEY);
-if (!currentSession) {
-  // Web app is logged out — ensure extension matches
+const logoutAt       = localStorage.getItem("af_logout_at");
+
+if (!currentSession || logoutAt) {
+  // Web app is logged out (or logout was requested) — ensure extension matches
   chrome.storage.local.get("session", (r) => {
     if (r["session"]) chrome.storage.local.remove("session");
   });
+  // Clear the flag after acting on it
+  if (logoutAt) localStorage.removeItem("af_logout_at");
 }
 
 // Case D: Extension popup signed out → chrome.storage.local.session cleared.

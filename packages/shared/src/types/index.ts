@@ -163,7 +163,30 @@ export interface ChatSession {
   createdAt: string;
 }
 
-// ─── Autofill ─────────────────────────────────────────────────────────────────
+// ─── Autofill (smart scrape) ──────────────────────────────────────────────────
+
+/**
+ * One form field as scraped from the page.
+ * The detector does NOT classify or guess answers — only the question text
+ * and available choices are extracted. Claude answers them all.
+ */
+export interface ScrapedField {
+  uid: string;
+  question: string;    // visible label / heading near the field
+  fieldType: string;   // "text" | "email" | "tel" | "textarea" | "radio" | "select" | "file"
+  options: string[];   // choices for radio/select, empty for free-text
+  selector: string;    // CSS selector used to fill the element
+}
+
+/** Claude's answer for one field, returned by /autofill/smart-match. */
+export interface SmartAnswer {
+  uid: string;
+  answer: string;
+  confidence: "high" | "medium" | "low";
+  skipped?: boolean;
+}
+
+// ─── Autofill (legacy classification) ────────────────────────────────────────
 
 export type FieldKind =
   | "full_name" | "first_name" | "last_name"
@@ -250,7 +273,13 @@ export interface ExtensionMessage {
     | "ENSURE_DYNAMIC_APPLY_PERMISSION"
     | "TELEMETRY"
     | "GET_RECENT_APPS"
-    | "QUICK_TRACK";
+    | "QUICK_TRACK"
+    | "SMART_MATCH"
+    | "FIELD_ANSWER"
+    | "SMART_MATCH_DONE"
+    | "REGENERATE_FIELD"
+    | "AUTH_LOGIN"
+    | "OPEN_LOGIN";
   payload?: unknown;
 }
 

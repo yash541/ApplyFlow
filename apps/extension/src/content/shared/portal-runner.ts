@@ -1,6 +1,6 @@
 import type { LinkedInJobData, ExtensionMessage, NotificationType } from "@applyflow/shared";
 import { showToast } from "./toast";
-import { injectOverlay, type AppRecord } from "./overlay";
+import { injectOverlay, updateOverlayScore, type AppRecord } from "./overlay";
 import { waitForStableDOM } from "../runtime/dom-stability";
 import { scrapeWithRetries } from "../runtime/runtime-manager";
 import { buildFingerprint } from "../tracking/fingerprint";
@@ -227,89 +227,74 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
       (existing: AppRecord) => {
         if (chrome.runtime.lastError || runId !== currentRunId) return;
 
+        // Mutable score ref — updated when ANALYZE_JOB responds so the guard
+        // observer re-injects with the real score if the overlay is removed.
+        let resolvedScore = 0;
+        let resolvedBasis = "loading";
+
+        // Mutable ref for tracked state (updated when user saves a job)
+        let currentExisting: AppRecord = existing ?? null;
+
+        const onAppSaved = (appId: string) => {
+          currentExisting = {
+            id: appId, company: jobData.company, role: jobData.title,
+            status: "saved", applied_at: new Date().toISOString(),
+            has_resume: false, resume_id: null, ats_score: null, job_url: jobData.url,
+          };
+          attachDetector(appId, jobData.company, jobData.title);
+          if (stopInterceptor) { stopInterceptor(); stopInterceptor = null; }
+          stopInterceptor = startApplyInterceptor({
+            fingerprint, applicationId: appId, tailoredResumeId: null,
+            sourcePortal: portal, company: jobData.company, role: jobData.title,
+          });
+          chrome.runtime.sendMessage({
+            type: "RECORD_OBSERVATION",
+            payload: { applicationId: appId, extractionMethod, portal, isLive: true,
+                       signals: { score: resolvedScore, attempts: result!.attempts } },
+          } as ExtensionMessage);
+        };
+
+        // ── Phase 1: inject overlay IMMEDIATELY with loading state ─────────────
+        // The user sees the panel right away — score counts up while Claude runs.
+        injectOverlay(0, jobData, existing ?? null, fingerprint, onAppSaved, "loading");
+        runtimeState.transition(existing?.id ? RuntimeState.TRACKING : RuntimeState.READY);
+        track("overlay_injected", { portal, score: 0, scoreBasis: "loading", hasExisting: !!existing?.id });
+
+        // Start apply interceptor immediately (doesn't need the score)
+        stopInterceptor = startApplyInterceptor({
+          fingerprint, applicationId: existing?.id ?? "",
+          tailoredResumeId: existing?.resume_id ?? null,
+          sourcePortal: portal, company: jobData.company, role: jobData.title,
+        });
+
+        // For already-tracked "saved" apps, start submission detector immediately
+        if (existing?.id && existing.status === "saved") {
+          attachDetector(existing.id, jobData.company, jobData.title);
+        }
+
+        // ── Phase 2: fetch real score in background ────────────────────────────
+        // When Claude responds, animate the score to the real value.
         chrome.runtime.sendMessage(
           { type: "ANALYZE_JOB", payload: jobData } as ExtensionMessage,
-          (scoreRes: { overall_score?: number; overallScore?: number } | null) => {
+          (scoreRes: { overall_score?: number; overallScore?: number; score_basis?: string } | null) => {
             if (chrome.runtime.lastError || runId !== currentRunId) return;
-            const score = scoreRes?.overall_score ?? scoreRes?.overallScore ?? Math.floor(Math.random() * 30) + 65;
+            resolvedScore = scoreRes?.overall_score ?? scoreRes?.overallScore ?? Math.floor(Math.random() * 30) + 65;
+            resolvedBasis = scoreRes?.score_basis ?? "full_jd";
 
-            // For already-tracked "saved" apps, start watching for submission immediately
-            if (existing?.id && existing.status === "saved") {
-              attachDetector(existing.id, jobData.company, jobData.title);
-            }
+            // Animate the displayed score to the real value
+            updateOverlayScore(resolvedScore, resolvedBasis);
+            track("score_resolved", { portal, score: resolvedScore, basis: resolvedBasis });
 
-            // Record observation for already-tracked jobs (fire-and-forget)
+            // Record observation now that we have the real score
             if (existing?.id) {
               chrome.runtime.sendMessage({
                 type: "RECORD_OBSERVATION",
-                payload: {
-                  applicationId: existing.id,
-                  extractionMethod,
-                  portal,
-                  isLive: true,
-                  signals: { score, attempts: result!.attempts },
-                },
+                payload: { applicationId: existing.id, extractionMethod, portal, isLive: true,
+                           signals: { score: resolvedScore, attempts: result!.attempts } },
               } as ExtensionMessage);
             }
-
-            // Mutable ref: onAppSaved updates this so the overlay guard can
-            // re-inject with the correct tracked state after a user saves a job.
-            let currentExisting: AppRecord = existing ?? null;
-
-            const onAppSaved = (appId: string) => {
-              // Build a minimal AppRecord so the re-injected overlay shows the
-              // tracked view immediately (no round-trip needed).
-              currentExisting = {
-                id: appId,
-                company: jobData.company,
-                role: jobData.title,
-                status: "saved",
-                applied_at: new Date().toISOString(),
-                has_resume: false,
-                resume_id: null,
-                ats_score: null,
-                job_url: jobData.url,
-              };
-              attachDetector(appId, jobData.company, jobData.title);
-
-              // Refresh interceptor with the real applicationId now that we have it.
-              // This ensures any apply-session created after this point carries the ID.
-              if (stopInterceptor) { stopInterceptor(); stopInterceptor = null; }
-              stopInterceptor = startApplyInterceptor({
-                fingerprint,
-                applicationId: appId,
-                tailoredResumeId: null,
-                sourcePortal: portal,
-                company: jobData.company,
-                role: jobData.title,
-              });
-              chrome.runtime.sendMessage({
-                type: "RECORD_OBSERVATION",
-                payload: {
-                  applicationId: appId,
-                  extractionMethod,
-                  portal,
-                  isLive: true,
-                  signals: { score, attempts: result!.attempts },
-                },
-              } as ExtensionMessage);
-            };
-
-            injectOverlay(score, jobData, existing ?? null, fingerprint, onAppSaved);
-            runtimeState.transition(existing?.id ? RuntimeState.TRACKING : RuntimeState.READY);
-            track("overlay_injected", { portal, score, hasExisting: !!existing?.id });
-
-            // Start apply interceptor so we can follow the user across portals.
-            // Runs on the job listing page; persists session to chrome.storage.session
-            // before any redirect fires. Safe to start even for untracked jobs.
-            stopInterceptor = startApplyInterceptor({
-              fingerprint,
-              applicationId: existing?.id ?? "",
-              tailoredResumeId: existing?.resume_id ?? null,
-              sourcePortal: portal,
-              company: jobData.company,
-              role: jobData.title,
-            });
+          },
+        );
 
             // Overlay guard: some SPA portals (LinkedIn, Glassdoor) re-render
             // their job panel and silently remove injected DOM nodes. If our
@@ -325,12 +310,10 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
               if (!document.getElementById("applyflow-overlay")) {
                 guardObserver.disconnect();
                 track("overlay_reinjected", { portal });
-                injectOverlay(score, jobData, currentExisting, fingerprint, onAppSaved);
+                injectOverlay(resolvedScore, jobData, currentExisting, fingerprint, onAppSaved, resolvedBasis === "loading" ? "loading" : resolvedBasis);
               }
             });
             guardObserver.observe(document.body, { childList: true });
-          },
-        );
       },
     );
   } catch {

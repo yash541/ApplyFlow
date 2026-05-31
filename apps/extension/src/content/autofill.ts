@@ -1,5 +1,5 @@
 import { scanFields } from "./field-detector";
-import type { DetectedField, FieldMatch } from "@applyflow/shared";
+import type { ScrapedField, SmartAnswer } from "@applyflow/shared";
 import { clearApplySession, createApplySession, getApplySession, updateApplySession, type ApplySession } from "./runtime/application-session";
 import { injectAssistant, updateAssistantStatus, destroyAssistant, isAssistantActive } from "./shared/application-assistant";
 import { computeStepHash, markStepCompleted } from "./runtime/form-step-manager";
@@ -209,6 +209,18 @@ function injectStyles() {
     }
     .af-tailor-btn:hover { background: rgba(99,102,241,0.18); }
 
+    .af-regen-btn {
+      background: none !important; border: none !important; box-shadow: none !important;
+      cursor: pointer !important; padding: 2px 5px !important; font-size: 13px !important;
+      color: #818cf8 !important; opacity: 0.7 !important; border-radius: 5px !important;
+      line-height: 1 !important; flex-shrink: 0 !important; outline: none !important;
+      display: inline-flex !important; align-items: center !important;
+      font-family: inherit !important; width: auto !important; height: auto !important;
+      transition: opacity 0.1s, background 0.1s !important;
+    }
+    .af-regen-btn:hover { opacity: 1 !important; background: rgba(99,102,241,0.15) !important; }
+    .af-regen-btn:disabled { opacity: 0.25 !important; cursor: default !important; }
+
     .af-learn-prompt {
       margin: 0 14px 4px;
       background: rgba(99,102,241,0.08);
@@ -405,51 +417,33 @@ function renderBadge(count: number): HTMLElement {
 
 // ── Panel: Detection ──────────────────────────────────────────────────────────
 
-const KIND_LABELS: Record<string, string> = {
-  full_name: "Full Name", first_name: "First Name", last_name: "Last Name",
-  email: "Email", phone: "Phone",
-  location: "Location", city: "City", state: "State", country: "Country", zip: "ZIP",
-  linkedin: "LinkedIn", github: "GitHub", website: "Website",
-  headline: "Headline", summary: "Summary / Cover Letter",
-  work_auth: "Work Authorization", requires_sponsorship: "Sponsorship",
-  salary: "Salary", years_experience: "Years of Experience", notice_period: "Notice Period",
-  remote_preference: "Remote Preference", willing_to_relocate: "Willing to Relocate",
-  gender: "Gender", ethnicity: "Ethnicity", disability: "Disability Status", veteran: "Veteran Status",
-  resume_file: "Resume Upload", unknown: "Unknown",
-};
-
 function renderDetectionPanel(
-  fields: DetectedField[],
+  fields: ScrapedField[],
   loggedIn: boolean,
   onMatch: () => void,
   onClose: () => void,
 ): HTMLElement {
   const panel = document.createElement("div");
   panel.id = `${AF_ID}-panel`;
-  const known = fields.filter((f) => f.kind !== "unknown" && f.confidence >= 0.6);
-  const unknownWithLabel = fields.filter(
-    (f) => f.kind === "unknown" && f.label.trim() !== "" && f.label !== "(no label)",
-  );
-  const actionableCount = known.length + unknownWithLabel.length;
+  const actionable = fields.filter(f => f.fieldType !== "file");
 
-  const rows = [...fields]
-    .sort((a, b) => (a.kind === "unknown" ? 1 : 0) - (b.kind === "unknown" ? 1 : 0))
-    .map((f) => {
-      const isKnown = f.kind !== "unknown" && f.confidence >= 0.6;
-      const isAiFill = f.kind === "unknown" && f.label.trim() !== "" && f.label !== "(no label)";
-      return `<div class="af-detect-row">
-        <span class="af-detect-label" title="${f.label}">${f.label}</span>
-        <span class="af-badge ${isKnown ? "af-badge-kind" : isAiFill ? "af-badge-ai" : "af-badge-unknown"}">
-          ${isKnown ? (KIND_LABELS[f.kind] ?? f.kind) : isAiFill ? "AI" : "Unknown"}
-        </span>
-      </div>`;
-    }).join("");
+  const rows = fields.map(f => {
+    const isFile   = f.fieldType === "file";
+    const hasOpts  = f.options.length > 0;
+    const badge    = hasOpts
+      ? `<span class="af-badge af-badge-kind">${f.options.slice(0, 3).join(" / ")}${f.options.length > 3 ? " …" : ""}</span>`
+      : `<span class="af-badge ${isFile ? "af-badge-unknown" : "af-badge-ai"}">${isFile ? "File" : "AI"}</span>`;
+    return `<div class="af-detect-row">
+      <span class="af-detect-label" title="${f.question}">${f.question}</span>
+      ${badge}
+    </div>`;
+  }).join("");
 
   panel.innerHTML = `
     <div class="af-header">
       <div>
         <div class="af-title-text">⚡ ApplyFlow</div>
-        <div class="af-subtitle">${known.length} classified · ${unknownWithLabel.length} AI-fill · ${fields.length} total</div>
+        <div class="af-subtitle">${actionable.length} question${actionable.length !== 1 ? "s" : ""} · ApplyFlow answers all</div>
         ${linkedJobHtml()}
       </div>
       <span class="af-x">✕</span>
@@ -458,11 +452,12 @@ function renderDetectionPanel(
     <div class="af-footer">
       ${loggedIn
         ? `<button class="af-btn af-btn-primary" id="${AF_ID}-match-btn"
-            ${actionableCount === 0 ? "disabled" : ""}>
-            ${actionableCount === 0 ? "No fields matched" : `Match & Review ${actionableCount} field${actionableCount !== 1 ? "s" : ""} →`}
+            ${actionable.length === 0 ? "disabled" : ""}>
+            ${actionable.length === 0 ? "No fields to fill"
+              : `✨ Answer ${actionable.length} question${actionable.length !== 1 ? "s" : ""} →`}
            </button>`
         : `<button class="af-btn af-btn-primary" id="${AF_ID}-signin-btn">
-            Sign in to Autofill →
+            ⚡ Log in to Autofill →
            </button>`
       }
     </div>
@@ -471,11 +466,9 @@ function renderDetectionPanel(
   panel.querySelector(".af-x")?.addEventListener("click", onClose);
   panel.querySelector(`#${AF_ID}-match-btn`)?.addEventListener("click", onMatch);
   attachRelinkListener(panel, () => {
-    // Swap inline to track prompt; on any selection re-open detection panel
     swapPanel(renderTrackPromptPanel(() => void openPanel(fields, true), onClose));
   });
   panel.querySelector(`#${AF_ID}-signin-btn`)?.addEventListener("click", () => {
-    onClose();
     chrome.runtime.sendMessage({ type: "OPEN_LOGIN" });
     onClose();
   });
@@ -507,8 +500,8 @@ function renderLoadingPanel(subtitle: string, onClose: () => void): HTMLElement 
 // ── Panel: Review Sidebar ─────────────────────────────────────────────────────
 
 function renderReviewSidebar(
-  fields: DetectedField[],
-  matches: FieldMatch[],
+  fields: ScrapedField[],
+  answers: SmartAnswer[],
   resumeId: string | null,
   resumeName: string | null,
   onFill: (confirmed: ReviewItem[], resumeId: string | null) => Promise<void>,
@@ -517,20 +510,26 @@ function renderReviewSidebar(
   const panel = document.createElement("div");
   panel.id = `${AF_ID}-panel`;
 
-  const matchMap = new Map(matches.map((m) => [m.uid, m]));
+  const answerMap = new Map(answers.map(a => [a.uid, a]));
   const hostname = (() => { try { return new URL(window.location.href).hostname; } catch { return ""; } })();
 
   const items: ReviewItem[] = fields
-    .map((f) => {
-      const m = matchMap.get(f.uid);
-      return { uid: f.uid, kind: f.kind, label: f.label, value: m?.value ?? "", source: m?.source ?? "none", selector: f.selector };
+    .map(f => {
+      const a = answerMap.get(f.uid);
+      return {
+        uid:      f.uid,
+        kind:     f.fieldType === "file" ? "resume_file" : "unknown",
+        label:    f.question,
+        value:    (!a || a.skipped) ? "" : a.answer,
+        source:   (a && !a.skipped) ? "ai" : "none",
+        selector: f.selector,
+      };
     })
-    // Keep unknown fields that have a label so the user can fill them manually even
-    // when AI returned no suggestion (or API key is absent).
-    .filter((item) => item.kind !== "unknown" || item.value || (item.label.trim() !== "" && item.label !== "(no label)"));
+    .filter(item => item.label !== "(no label)" || item.value);
 
   const rows = items.map((item) => {
-    const isLong = item.value.length > 80 || item.kind === "summary";
+    // Decide textarea vs input from the question label, not the current (possibly empty) value
+    const isLong = !!(item.label.match(/summary|about|cover letter|tell us|introduce|convey|comment|additional|description/i));
     const isFile = item.kind === "resume_file";
     const sourceBadge =
       item.source === "ai"    ? `<span class="af-badge af-badge-ai">AI</span>` :
@@ -553,7 +552,7 @@ function renderReviewSidebar(
     // Pre-checked only when a value already exists (from profile or AI).
     const isEnabled = isFile ? hasResumeToAttach : true;
     const isChecked = isFile ? hasResumeToAttach : !!item.value;
-    return `<div class="af-review-item" data-uid="${item.uid}" id="${AF_ID}-item-${item.uid}">
+    return `<div class="af-review-item" data-uid="${item.uid}" data-source="${item.source}" id="${AF_ID}-item-${item.uid}">
       <div class="af-review-item-header">
         <input type="checkbox" class="af-review-checkbox" data-uid="${item.uid}"
           ${isChecked ? "checked" : ""} ${!isEnabled ? "disabled" : ""}>
@@ -698,10 +697,19 @@ function renderReviewSidebar(
     return items
       .filter((item) => checked.has(item.uid))
       .map((item) => {
-        const input = panel.querySelector<HTMLInputElement | HTMLTextAreaElement>(
+        const input   = panel.querySelector<HTMLInputElement | HTMLTextAreaElement>(
           `[data-uid="${item.uid}"].af-review-input, [data-uid="${item.uid}"].af-review-textarea`,
         );
-        return { ...item, value: input?.value ?? item.value };
+        const itemEl  = panel.querySelector<HTMLElement>(`#${AF_ID}-item-${item.uid}`);
+        // Read source from data attribute — streaming may have updated it after initial render
+        let source = (itemEl?.dataset["source"] as ReviewItem["source"]) ?? item.source;
+        // If the user edited an AI-answered field, treat it as manually entered so
+        // the success panel offers to save the corrected value to their profile.
+        const aiValue = input?.dataset["aiValue"];
+        if (source === "ai" && input && aiValue !== undefined && input.value.trim() !== aiValue) {
+          source = "none";
+        }
+        return { ...item, source, value: input?.value ?? item.value };
       })
       .filter((item) => item.value.trim() !== "" || item.kind === "resume_file");
   }
@@ -843,7 +851,7 @@ async function fetchRecentApps(): Promise<RecentAppEntry[]> {
     try {
       chrome.runtime.sendMessage({ type: "GET_RECENT_APPS" }, (result) => {
         if (chrome.runtime.lastError || !result?.applications) { resolve([]); return; }
-        resolve((result.applications as RecentAppEntry[]).slice(0, 6));
+        resolve((result.applications as RecentAppEntry[]).slice(0, 30));
       });
     } catch { resolve([]); }
   });
@@ -935,12 +943,22 @@ function renderTrackPromptPanel(
         </div>
         <span class="af-x">✕</span>
       </div>
-      <div class="af-field-list">
+      <div class="af-field-list" style="display:flex; flex-direction:column;">
         ${apps.length > 0 ? `
-          <div style="padding:8px 14px 2px; font-size:10px; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:0.05em;">
+          <div style="padding:10px 14px 6px; font-size:10px; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:0.05em;">
             Recent applications — click to link
           </div>
-          ${recentRows}
+          <div style="padding:0 14px 6px;">
+            <input id="tp-search" class="af-review-input"
+              placeholder="🔍 Search by company or role…"
+              style="font-size:12px !important; padding:6px 10px !important;" />
+          </div>
+          <div id="tp-app-list" style="overflow-y:auto; max-height:260px; flex:1;">
+            ${recentRows}
+          </div>
+          <div id="tp-no-results" style="display:none; padding:12px 14px; font-size:12px; color:#6b7280; text-align:center;">
+            No matches — track as a new job below
+          </div>
           <div style="margin:6px 14px; height:1px; background:rgba(255,255,255,0.08);"></div>
         ` : ""}
         <div style="padding:${apps.length ? "8" : "12"}px 14px 2px; font-size:10px; font-weight:700; color:#6b7280; text-transform:uppercase; letter-spacing:0.05em;">
@@ -962,6 +980,23 @@ function renderTrackPromptPanel(
     `;
 
     panel.querySelector(".af-x")?.addEventListener("click", onClose);
+
+    // Live search filter
+    const searchEl  = panel.querySelector<HTMLInputElement>("#tp-search");
+    const listEl    = panel.querySelector<HTMLElement>("#tp-app-list");
+    const noResults = panel.querySelector<HTMLElement>("#tp-no-results");
+    searchEl?.addEventListener("input", () => {
+      const q = searchEl.value.toLowerCase().trim();
+      let visible = 0;
+      apps.forEach((app) => {
+        const row = panel.querySelector<HTMLElement>(`#tp-app-${app.id}`);
+        if (!row) return;
+        const match = !q || app.company.toLowerCase().includes(q) || app.role.toLowerCase().includes(q);
+        row.style.display = match ? "" : "none";
+        if (match) visible++;
+      });
+      if (noResults) noResults.style.display = visible === 0 ? "" : "none";
+    });
 
     // Link to existing app
     apps.forEach((app) => {
@@ -1009,6 +1044,64 @@ function renderTrackPromptPanel(
 
 // ── Orchestration ─────────────────────────────────────────────────────────────
 
+// ── Streaming helpers ─────────────────────────────────────────────────────────
+
+/** Recount checked items and update the fill-button label. */
+function syncPanelCounts() {
+  const panel = document.getElementById(`${AF_ID}-panel`);
+  if (!panel) return;
+  const checked = panel.querySelectorAll<HTMLInputElement>(".af-review-checkbox:checked").length;
+  const total   = panel.querySelectorAll(".af-review-item").length;
+  const btn     = panel.querySelector<HTMLButtonElement>(`#${AF_ID}-fill-btn`);
+  const counter = panel.querySelector(`#${AF_ID}-count`);
+  if (btn) {
+    btn.disabled = checked === 0;
+    btn.textContent = checked === 0 ? "No fields selected" : `Fill ${checked} field${checked !== 1 ? "s" : ""} →`;
+  }
+  if (counter) counter.textContent = `${checked} of ${total} fields ready`;
+}
+
+/** Apply one streaming answer to the already-rendered review sidebar. */
+function applyAnswerToSidebar(answer: SmartAnswer) {
+  const panel = document.getElementById(`${AF_ID}-panel`);
+  if (!panel) return;
+  const { uid, answer: value, confidence, skipped } = answer;
+  if (skipped || !value) return;
+
+  const itemEl = panel.querySelector<HTMLElement>(`#${AF_ID}-item-${uid}`);
+  if (!itemEl) return;
+
+  // Update input / textarea value and stamp the original AI answer so we can
+  // detect user edits later (if they change it, we'll offer to save the new value)
+  const input = panel.querySelector<HTMLInputElement | HTMLTextAreaElement>(
+    `[data-uid="${uid}"].af-review-input, [data-uid="${uid}"].af-review-textarea`,
+  );
+  if (input) {
+    input.value = value;
+    input.dataset["aiValue"] = value; // original AI answer — compared at fill time
+  }
+
+  // Swap badge: Manual → AI (with confidence tint)
+  const badge = itemEl.querySelector<HTMLElement>(".af-badge-none, .af-badge-unknown");
+  if (badge) {
+    const cls = confidence === "high" ? "af-badge-rules" : "af-badge-ai";
+    badge.className = `af-badge ${cls}`;
+    badge.textContent = confidence === "high" ? "AI ✓" : "AI";
+  }
+
+  // Track updated source so getChecked() reads it correctly
+  itemEl.dataset["source"] = "ai";
+
+  // Auto-check the checkbox
+  const cb = panel.querySelector<HTMLInputElement>(`.af-review-checkbox[data-uid="${uid}"]`);
+  if (cb && !cb.disabled && value.trim()) {
+    cb.checked = true;
+    itemEl.classList.remove("af-excluded");
+  }
+
+  syncPanelCounts();
+}
+
 function closeAll() {
   document.getElementById(`${AF_ID}-panel`)?.remove();
   document.getElementById(`${AF_ID}-badge`)?.remove();
@@ -1032,7 +1125,7 @@ function swapPanel(next: HTMLElement) {
   document.body.appendChild(next);
 }
 
-async function openPanel(fields: DetectedField[], _skipTrackPrompt = false) {
+async function openPanel(fields: ScrapedField[], _skipTrackPrompt = false) {
   const session = await new Promise<{ token?: string } | null>((resolve) => {
     chrome.runtime.sendMessage({ type: "GET_SESSION" }, resolve);
   });
@@ -1043,6 +1136,15 @@ async function openPanel(fields: DetectedField[], _skipTrackPrompt = false) {
   // show the track prompt so they can link to a recent job or skip.
   // Skipped on LinkedIn (portal-runner manages session there) and after the
   // user has already made an explicit choice (_skipTrackPrompt = true).
+  // On LinkedIn, portal-runner.ts manages the session — sync it into autofill's
+  // local activeSession so the linked job header and tailor button appear correctly.
+  if (IS_LINKEDIN && !activeSession?.applicationId) {
+    try {
+      const s = await getApplySession();
+      if (s?.applicationId) activeSession = s;
+    } catch { /* non-blocking */ }
+  }
+
   const hasTrackedContext = !!(activeSession?.applicationId);
   const needsTrackPrompt = loggedIn && !hasTrackedContext && !IS_LINKEDIN && !_skipTrackPrompt;
   if (needsTrackPrompt) {
@@ -1058,95 +1160,52 @@ async function openPanel(fields: DetectedField[], _skipTrackPrompt = false) {
       fields,
       loggedIn,
       async () => {
-        // Phase 3: match fields
-        swapPanel(renderLoadingPanel("Matching your profile…", closePanel));
+        const actionable = fields.filter(f => f.fieldType !== "file");
 
-        const known = fields.filter((f) => f.kind !== "unknown" && f.confidence >= 0.6);
-        const unknownForAI = fields.filter(
-          (f) => f.kind === "unknown" && f.label.trim() !== "" && f.label !== "(no label)",
-        );
-        const allActionable = [...known, ...unknownForAI];
-
-        const response = await new Promise<{ matches?: FieldMatch[]; error?: string } | null>(
-          (resolve) => {
-            chrome.runtime.sendMessage(
-              {
-                type: "GET_MATCHES",
-                payload: {
-                  fields: allActionable.map((f) => ({
-                    uid: f.uid, kind: f.kind, confidence: f.confidence,
-                    input_type: f.inputType, label: f.label, selector: f.selector,
-                  })),
-                  url: window.location.href,
-                },
-              },
-              resolve,
-            );
-          },
-        );
-
-        const matches: FieldMatch[] = response?.matches ?? [];
-        let resumeId: string | null = (response as { resume_id?: string | null })?.resume_id ?? null;
-        let resumeName: string | null = (response as { resume_name?: string | null })?.resume_name ?? null;
-
-        // Session resume fallback: when the backend couldn't find a tailored
-        // resume by URL (cross-portal redirect, different domain), use the one
-        // the apply session carried over from the originating job page.
-        if (!resumeId && !sessionResumeId) {
-          // Quick check for late-arriving session (LinkedIn Easy Apply case —
-          // session is created by interceptor AFTER page load)
+        // Session resume fallback (done before opening sidebar)
+        let resumeId:   string | null = null;
+        let resumeName: string | null = null;
+        if (!sessionResumeId) {
           try {
             const s = await getApplySession();
-            if (s?.tailoredResumeId) {
-              activeSession   = s;
-              sessionResumeId = s.tailoredResumeId;
-            }
+            if (s?.tailoredResumeId) { activeSession = s; sessionResumeId = s.tailoredResumeId; }
           } catch { /* non-blocking */ }
         }
-        if (!resumeId && sessionResumeId) {
-          resumeId   = sessionResumeId;
-          resumeName = "Tailored Resume";
-        }
+        if (sessionResumeId) { resumeId = sessionResumeId; resumeName = "Tailored Resume"; }
 
         updateAssistantStatus("autofill_ready");
 
-        // Phase 4: review sidebar
+        // ── Open the sidebar IMMEDIATELY with empty answers ──────────────────
+        // Streaming answers will populate fields as they arrive.
         swapPanel(
           renderReviewSidebar(
-            allActionable,
-            matches,
+            [...actionable, ...fields.filter(f => f.fieldType === "file")],
+            [],   // empty — filled in progressively via FIELD_ANSWER messages
             resumeId,
             resumeName,
             async (confirmed, rId) => {
-              // Store for record keeping
               chrome.storage.local.set({
                 af_last_fill: { items: confirmed, url: window.location.href, timestamp: Date.now() },
               });
 
-              // Capture the step key NOW — before the fill runs and before
-              // the modal can transition to a new step (which would update
-              // currentFieldsKey while the success panel is still visible).
-              // finishFill() uses this snapshot so "Done" never accidentally
-              // suppresses the badge for the next step.
               const filledStepKey = currentFieldsKey;
 
-              // Phase 5: actually fill
               swapPanel(renderLoadingPanel("Filling fields…", closePanel));
               updateAssistantStatus("filling");
               void updateApplySession({ currentState: "filling" });
 
               const { filled, skipped } = await fillFields(confirmed, rId);
 
-              // Track step completion for form-step manager
-              markStepCompleted(computeStepHash([...known, ...unknownForAI]), [...known, ...unknownForAI]);
+              markStepCompleted(computeStepHash(actionable), actionable);
               if (filled > 0) updateAssistantStatus("autofill_ready");
 
-              // Offer to save any field the user had to type manually (source !== "rules",
-              // not a file, has a real label) — covers unknown AND known-kind fields
-              // that aren't yet in the profile (e.g. website, salary).
+              // Offer to save fields the user typed manually (source === "none" means
+              // Claude had no answer from the profile — the user filled it in themselves).
+              // source === "ai" means Claude already derived it from the profile, so
+              // there's no new data to save back.
               const learnedItems: LearnedItem[] = confirmed
                 .filter((i) =>
-                  i.source !== "rules" &&
+                  i.source === "none" &&
                   i.kind !== "resume_file" &&
                   i.value.trim() !== "" &&
                   i.label.trim() !== "" &&
@@ -1180,6 +1239,37 @@ async function openPanel(fields: DetectedField[], _skipTrackPrompt = false) {
             closePanel,
           ),
         );
+
+        // ── Register streaming listener AFTER sidebar is in the DOM ──────────
+        // Background pushes FIELD_ANSWER as each answer arrives, SMART_MATCH_DONE when all done.
+        const onStreamMsg = (msg: { type: string; payload?: SmartAnswer }) => {
+          if (msg.type === "FIELD_ANSWER" && msg.payload) {
+            applyAnswerToSidebar(msg.payload);
+          } else if (msg.type === "SMART_MATCH_DONE") {
+            chrome.runtime.onMessage.removeListener(onStreamMsg);
+            syncPanelCounts();
+          }
+          return true;
+        };
+        chrome.runtime.onMessage.addListener(onStreamMsg);
+
+        // Fire the request — sendResponse returns immediately, answers come via FIELD_ANSWER
+        chrome.runtime.sendMessage({
+          type: "SMART_MATCH",
+          payload: {
+            fields: actionable.map(f => ({
+              uid:        f.uid,
+              question:   f.question,
+              field_type: f.fieldType,
+              options:    f.options,
+              selector:   f.selector,
+            })),
+            url: window.location.href,
+            job_context: activeSession
+              ? `${activeSession.company ?? ""} · ${activeSession.role ?? ""}`.trim()
+              : "",
+          },
+        });
       },
       closePanel,
     ),
@@ -1299,8 +1389,8 @@ const dismissedKeys = new Set<string>(); // field-set keys the user explicitly c
 // Banner settle timer — after 3s with no detected fields, show the activate banner
 let noFieldsTimer: ReturnType<typeof setTimeout> | null = null;
 
-function getFieldsKey(fields: DetectedField[]): string {
-  return fields.map((f) => f.selector).sort().join("|");
+function getFieldsKey(fields: ScrapedField[]): string {
+  return fields.map(f => f.selector).sort().join("|");
 }
 
 /**
@@ -1344,11 +1434,8 @@ function _runInternal() {
   // On LinkedIn scope scanning to the modal so background page fields don't leak in
   const scanRoot = IS_LINKEDIN ? linkedInModalRoot() : document;
   const fields = scanFields(scanRoot);
-  const known = fields.filter((f) => f.kind !== "unknown" && f.confidence >= 0.6);
-  const unknownActionable = fields.filter(
-    (f) => f.kind === "unknown" && f.label.trim() !== "" && f.label !== "(no label)",
-  );
-  const actionableCount = known.length + unknownActionable.length;
+  // All non-file fields are actionable — Claude answers everything
+  const actionableCount = fields.filter(f => f.fieldType !== "file").length;
 
   if (actionableCount === 0) {
     // No fields detected. Start a settle timer so the banner only appears
@@ -1372,7 +1459,7 @@ function _runInternal() {
   if (noFieldsTimer) { clearTimeout(noFieldsTimer); noFieldsTimer = null; }
   if (isActivateBannerVisible()) hideActivateBanner();
 
-  const fieldsKey = getFieldsKey([...known, ...unknownActionable]);
+  const fieldsKey = getFieldsKey(fields.filter(f => f.fieldType !== "file"));
   const panelOpen = !!document.getElementById(`${AF_ID}-panel`);
   const needsAssistant = !!activeSession && !IS_LINKEDIN && !isAssistantActive();
 

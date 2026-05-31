@@ -446,6 +446,117 @@ class SmartAnswerOut(BaseModel):
     skipped: bool = False
 
 
+# ── Profile-first field matching ─────────────────────────────────────────────
+# These fields are always answerable directly from the profile — no Claude needed.
+# Each entry: (list of question substrings to match, profile key to use)
+
+_PROFILE_RULES: list[tuple[list[str], str]] = [
+    (["first name", "given name", "forename"],                             "first_name"),
+    (["last name", "surname", "family name"],                              "last_name"),
+    (["middle name"],                                                      "middle_name"),
+    (["full name", "your name", "applicant name", "legal name"],           "name"),
+    (["email"],                                                            "email"),
+    (["phone", "mobile", "telephone", "cell", "contact number", "whatsapp"], "phone"),
+    (["linkedin"],                                                         "linkedin"),
+    (["github"],                                                           "github"),
+    (["website", "portfolio", "personal url", "homepage"],                 "website"),
+    (["current location", "present location", "location", "city", "address"], "location"),
+    (["headline", "current title", "designation"],                         "headline"),
+    (["summary", "tell us about", "about yourself", "introduce yourself",
+      "cover letter", "anything you would like to convey",
+      "additional information", "other comments"],                         "summary"),
+]
+
+
+def _try_profile_match(field: ScrapedFieldIn, profile: dict) -> "SmartAnswerOut | None":
+    """Answer a field instantly from the profile, skipping Claude entirely.
+    Returns None when Claude is needed (radio/select options, or no match)."""
+    # Radio/select: Claude must pick the right option text
+    if field.field_type in ("radio", "select") and field.options:
+        return None
+
+    q = field.question.lower().strip()
+    for patterns, key in _PROFILE_RULES:
+        if any(p in q for p in patterns):
+            raw = profile.get(key, "")
+            if raw:
+                value = str(raw)[:500] if key == "summary" else str(raw)
+                return SmartAnswerOut(uid=field.uid, answer=value, confidence="high")
+
+    # Derived fields not explicitly in _PROFILE_RULES
+    exp = profile.get("experience", [])
+    edu = profile.get("education", [])
+
+    if any(p in q for p in ["current organization", "current company", "company name", "employer", "organization name"]):
+        val = exp[0].get("company", "") if exp else ""
+        if val: return SmartAnswerOut(uid=field.uid, answer=val, confidence="high")
+
+    if any(p in q for p in ["college", "university", "institution", "school"]):
+        val = edu[0].get("institution", "") if edu else ""
+        if val: return SmartAnswerOut(uid=field.uid, answer=val, confidence="high")
+
+    if any(p in q for p in ["degree", "highest qualification", "qualification"]):
+        val = edu[0].get("degree", "") if edu else ""
+        if val: return SmartAnswerOut(uid=field.uid, answer=val, confidence="high")
+
+    return None
+
+
+def _build_compact_profile(profile: dict) -> str:
+    """
+    Build a compact, flat profile string with the most answerable fields first.
+    Avoids the 3000-char truncation swallowing critical fields like name/email
+    that we add after the large profile.data blob.
+    """
+    # Critical identity fields — always first, always present
+    lines = [
+        f"full_name: {profile.get('name', '')}",
+        f"first_name: {profile.get('first_name', '')}",
+        f"last_name: {profile.get('last_name', '')}",
+        f"middle_name: {profile.get('middle_name', '')}",
+        f"email: {profile.get('email', '')}",
+        f"phone: {profile.get('phone', profile.get('phone_number', ''))}",
+        f"location: {profile.get('location', '')}",
+        f"linkedin_url: {profile.get('linkedin', '')}",
+        f"github_url: {profile.get('github', '')}",
+        f"website: {profile.get('website', '')}",
+        f"headline: {profile.get('headline', '')}",
+        f"work_authorization: {profile.get('work_authorization', '')}",
+        f"requires_sponsorship: {profile.get('requires_sponsorship', '')}",
+        f"years_experience: {profile.get('years_experience', '')}",
+        f"notice_period: {profile.get('notice_period', '')}",
+        f"salary_min: {profile.get('salary_min', '')}",
+        f"salary_max: {profile.get('salary_max', '')}",
+        f"salary_currency: {profile.get('salary_currency', 'USD')}",
+        f"remote_preference: {profile.get('remote_preference', '')}",
+        f"willing_to_relocate: {profile.get('willing_to_relocate', '')}",
+        f"gender: {profile.get('gender', '')}",
+        f"ethnicity: {profile.get('ethnicity', '')}",
+        f"disability_status: {profile.get('disability_status', '')}",
+        f"veteran_status: {profile.get('veteran_status', '')}",
+        f"summary: {str(profile.get('summary', ''))[:300]}",
+        f"skills: {', '.join(profile.get('skills', [])[:20])}",
+    ]
+
+    # Current job — most relevant experience entry
+    exp = profile.get("experience", [])
+    if exp:
+        j = exp[0]
+        lines.append(f"current_company: {j.get('company', '')}")
+        lines.append(f"current_title: {j.get('title', '')}")
+        lines.append(f"current_duration: {j.get('duration', '')}")
+
+    # Education
+    edu = profile.get("education", [])
+    if edu:
+        e = edu[0]
+        lines.append(f"degree: {e.get('degree', '')}")
+        lines.append(f"institution: {e.get('institution', '')}")
+        lines.append(f"graduation_year: {e.get('year', '')}")
+
+    return "\n".join(l for l in lines if not l.endswith(": "))
+
+
 async def _answer_one_field(
     field: ScrapedFieldIn,
     profile: dict,
@@ -465,26 +576,29 @@ async def _answer_one_field(
         opts = "\n".join(f"  - {o}" for o in field.options)
         options_block = f"\nAvailable options (pick exactly one):\n{opts}"
 
-    job_ctx = f"\nJob context: {job_context[:500]}" if job_context else ""
+    job_ctx = f"\nJob context: {job_context[:400]}" if job_context else ""
+
+    compact_profile = _build_compact_profile(profile)
 
     prompt = (
-        f"You are filling out a job application form on behalf of the candidate.\n"
-        f"Use ONLY the information provided in the profile below. Never fabricate facts.\n\n"
-        f"Profile:\n{json.dumps(profile, indent=2)[:3000]}\n"
+        f"Fill in this job application field for the candidate. "
+        f"Output ONLY the answer value — no explanation, no reasoning, no extra text.\n\n"
+        f"Candidate profile:\n{compact_profile}\n"
         f"{job_ctx}\n\n"
-        f"Form question: {field.question}"
+        f"Field: {field.question}"
         f"{options_block}\n\n"
-        "Rules:\n"
-        "- If options are given, respond with EXACTLY one of the option strings and nothing else.\n"
-        "- For text/textarea fields, respond with a concise, accurate answer.\n"
-        "- If you truly cannot determine the answer from the profile, respond with: null\n\n"
+        "Output rules:\n"
+        "- Output ONLY the raw answer. Nothing else. No sentences, no quotes, no explanation.\n"
+        "- If options are listed, output EXACTLY one option string, verbatim.\n"
+        "- For URL fields: output the full URL (e.g. https://linkedin.com/in/...).\n"
+        "- If the profile has no relevant data at all, output exactly: null\n\n"
         "Answer:"
     )
 
     try:
         msg = await client.messages.create(
             model=model,
-            max_tokens=300,
+            max_tokens=150,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = msg.content[0].text.strip()
@@ -531,8 +645,20 @@ async def smart_match(
     profile: dict = {}
     if profile_row:
         profile = profile_row.data or {}
-    profile["name"] = current_user.name
+    # Always use authoritative values from the user record — never trust stale profile data
+    profile["name"]  = current_user.name
     profile["email"] = current_user.email
+
+    # Always derive first / last name from the authoritative full name
+    if current_user.name:
+        parts = current_user.name.strip().split()
+        profile["first_name"] = parts[0] if parts else ""
+        profile["last_name"]  = parts[-1] if len(parts) > 1 else ""
+        profile["middle_name"] = " ".join(parts[1:-1]) if len(parts) > 2 else ""
+
+    # Mirror phone so Claude sees it regardless of which key it looks for
+    if profile.get("phone"):
+        profile["phone_number"] = profile["phone"]
 
     if not settings.ANTHROPIC_API_KEY or not body.fields:
         return {"answers": []}
@@ -553,3 +679,133 @@ async def smart_match(
             answers.append(res)
 
     return {"answers": answers}
+
+
+# Maps form label text (lower-cased) → profile dict key.
+# Used to promote saved learned_fields back to the top-level profile.
+_LABEL_TO_KEY: dict[str, str] = {
+    "first name": "first_name",    "given name": "first_name",
+    "last name":  "last_name",     "surname":    "last_name",
+    "middle name":"middle_name",
+    "full name":  "name",          "your name":  "name",
+    "email":      "email",         "email address": "email",
+    "phone":      "phone",         "phone number": "phone",
+    "mobile":     "phone",         "mobile phone number": "phone",
+    "linkedin":   "linkedin",      "linkedin url": "linkedin",
+    "github":     "github",        "github url":   "github",
+    "website":    "website",       "portfolio":    "website",
+    "location":   "location",      "current location": "location",
+    "city":       "city",
+    "headline":   "headline",      "current title": "headline",
+    "summary":    "summary",       "about yourself": "summary",
+}
+
+
+def _prepare_profile(current_user: "User", profile_data: dict) -> dict:
+    """
+    Build the profile dict that Claude and profile-first matching will use.
+
+    Priority order for each field:
+      1. learned_fields saved by the user (they explicitly corrected a value)
+      2. Explicit profile fields set in the Profile page
+      3. Values derived from current_user.name / email (authoritative DB fields)
+    """
+    profile = dict(profile_data)
+
+    # Promote learned_fields into the top-level profile so matching finds them.
+    # learned_fields are keyed by the raw form label (lower-cased), e.g. "first name".
+    learned: dict[str, str] = profile.pop("learned_fields", {}) or {}
+    for label, value in learned.items():
+        key = _LABEL_TO_KEY.get(label.strip().lower())
+        if key and value:
+            profile[key] = value  # user-confirmed correction takes priority
+
+    # Always set authoritative values from the DB user record
+    profile["name"]  = current_user.name
+    profile["email"] = current_user.email
+
+    # Derive first/last name only if not already set by learned_fields or explicit profile.
+    # Validate: the stored value must be a substring of the current full name.
+    # If not (e.g. stale test data "Karthik"), fall back to the derived split.
+    if current_user.name:
+        parts = current_user.name.strip().split()
+        full_lower = current_user.name.lower()
+
+        stored_first = profile.get("first_name", "")
+        if not stored_first or stored_first.lower() not in full_lower:
+            profile["first_name"] = parts[0] if parts else ""
+
+        stored_last = profile.get("last_name", "")
+        if not stored_last or stored_last.lower() not in full_lower:
+            profile["last_name"] = parts[-1] if len(parts) > 1 else ""
+
+        if not profile.get("middle_name"):
+            profile["middle_name"] = " ".join(parts[1:-1]) if len(parts) > 2 else ""
+
+    if profile.get("phone"):
+        profile["phone_number"] = profile["phone"]
+    return profile
+
+
+@router.post("/smart-match-stream")
+async def smart_match_stream(
+    body: SmartMatchRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Stream field answers as SSE.
+
+    Tier 1 — Profile-first: matched fields emit instantly  (<10ms)
+    Tier 2 — Claude Haiku:  remaining fields fire concurrently, each emits as it completes (~400ms)
+
+    Total perceived latency = time for first answer to appear, not time for all answers.
+    """
+    result = await db.execute(select(UserProfile).where(UserProfile.user_id == current_user.id))
+    profile_row = result.scalar_one_or_none()
+    profile = _prepare_profile(current_user, profile_row.data or {} if profile_row else {})
+
+    # Haiku — 5× faster than Sonnet for short answers, more than capable for form filling
+    haiku = "claude-haiku-4-5-20251001"
+    client = (
+        anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+        if settings.ANTHROPIC_API_KEY else None
+    )
+
+    async def generate():
+        remaining: list[ScrapedFieldIn] = []
+
+        # Tier 1: answer from profile instantly
+        for field in body.fields:
+            matched = _try_profile_match(field, profile)
+            if matched:
+                yield f"data: {matched.model_dump_json()}\n\n"
+            else:
+                remaining.append(field)
+
+        if not remaining or not client:
+            yield "data: [DONE]\n\n"
+            return
+
+        # Tier 2: concurrent Haiku calls — yield each as it completes
+        loop = asyncio.get_event_loop()
+        tasks = [
+            loop.create_task(
+                _answer_one_field(field, profile, body.job_context, client, haiku)
+            )
+            for field in remaining
+        ]
+        for coro in asyncio.as_completed(tasks):
+            try:
+                res = await coro
+                yield f"data: {res.model_dump_json()}\n\n"
+            except Exception:
+                pass
+
+        yield "data: [DONE]\n\n"
+
+    from fastapi.responses import StreamingResponse as SR
+    return SR(generate(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+    })

@@ -103,9 +103,16 @@ chrome.runtime.onMessage.addListener(
     }
 
     if (message.type === "SMART_MATCH") {
-      void smartMatch(message.payload as { fields: unknown[]; url: string; job_context?: string })
-        .then(sendResponse)
-        .catch(() => sendResponse({ error: "Smart match failed" }));
+      const tabId = sender.tab?.id;
+      // Start streaming — answers pushed to tab via chrome.tabs.sendMessage as they arrive.
+      // sendResponse fires immediately; the content script listens for FIELD_ANSWER / SMART_MATCH_DONE.
+      void smartMatchStream(
+        message.payload as { fields: unknown[]; url: string; job_context?: string },
+        tabId,
+      ).catch(() => {
+        if (tabId) chrome.tabs.sendMessage(tabId, { type: "SMART_MATCH_DONE" }).catch(() => {});
+      });
+      sendResponse({ ok: true });
       return true;
     }
 
@@ -485,7 +492,16 @@ async function markAllRead(): Promise<void> {
 
 async function getToken(): Promise<string | null> {
   const result = await chrome.storage.local.get("session");
-  return (result["session"] as { token?: string } | null)?.token ?? null;
+  const session = result["session"] as { token?: string; expiresAt?: string } | null;
+  if (!session?.token) return null;
+
+  // Clear and reject if the session has expired
+  if (session.expiresAt && Date.now() > new Date(session.expiresAt).getTime()) {
+    await chrome.storage.local.remove("session");
+    return null;
+  }
+
+  return session.token;
 }
 
 async function authedFetch(url: string, init: RequestInit = {}): Promise<Response> {
@@ -614,22 +630,59 @@ async function getMatches(payload: { fields: unknown[]; url: string; job_context
   }
 }
 
-async function smartMatch(payload: { fields: unknown[]; url: string; job_context?: string }) {
+async function smartMatchStream(
+  payload: { fields: unknown[]; url: string; job_context?: string },
+  tabId: number | undefined,
+): Promise<void> {
+  if (!tabId) return;
+  if (!await getToken()) {
+    chrome.tabs.sendMessage(tabId, { type: "SMART_MATCH_DONE" }).catch(() => {});
+    return;
+  }
+
+  const res = await authedFetch(`${API_BASE}/api/v1/autofill/smart-match-stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      fields: payload.fields,
+      url: payload.url,
+      job_context: payload.job_context ?? "",
+    }),
+  });
+
+  if (!res.ok || !res.body) {
+    chrome.tabs.sendMessage(tabId, { type: "SMART_MATCH_DONE" }).catch(() => {});
+    return;
+  }
+
+  const reader  = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+
   try {
-    if (!await getToken()) return { error: "Not signed in" };
-    const res = await authedFetch(`${API_BASE}/api/v1/autofill/smart-match`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fields: payload.fields,
-        url: payload.url,
-        job_context: payload.job_context ?? "",
-      }),
-    });
-    if (!res.ok) return { error: `API error ${res.status}` };
-    return await res.json();
-  } catch {
-    return { error: "API unavailable" };
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split("\n\n");
+      buf = parts.pop() ?? "";
+
+      for (const part of parts) {
+        if (!part.startsWith("data: ")) continue;
+        const data = part.slice(6).trim();
+        if (data === "[DONE]") {
+          chrome.tabs.sendMessage(tabId, { type: "SMART_MATCH_DONE" }).catch(() => {});
+          return;
+        }
+        try {
+          const answer = JSON.parse(data);
+          chrome.tabs.sendMessage(tabId, { type: "FIELD_ANSWER", payload: answer }).catch(() => {});
+        } catch { /* ignore malformed SSE line */ }
+      }
+    }
+  } finally {
+    chrome.tabs.sendMessage(tabId, { type: "SMART_MATCH_DONE" }).catch(() => {});
   }
 }
 
@@ -799,7 +852,7 @@ async function authLogin(payload: { email: string; password: string }) {
 async function getRecentApps() {
   try {
     if (!await getToken()) return null;
-    const res = await authedFetch(`${API_BASE}/api/v1/applications/?limit=8`);
+    const res = await authedFetch(`${API_BASE}/api/v1/applications/?limit=30`);
     if (!res.ok) return null;
     return await res.json();
   } catch {

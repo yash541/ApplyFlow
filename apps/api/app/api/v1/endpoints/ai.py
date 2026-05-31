@@ -11,7 +11,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
-from app.models import User, Resume, Application
+from app.models import User, Resume, Application, UserProfile
 
 router = APIRouter()
 
@@ -32,6 +32,8 @@ class MatchResponse(BaseModel):
     experience_match: int
     missing_keywords: list[str]
     matching_keywords: list[str]
+    score_basis: str = "full_jd"   # "full_jd" | "title_only"
+    reasoning: str = ""
 
 
 class TailorRequest(BaseModel):
@@ -67,16 +69,132 @@ class JobExtractionResponse(BaseModel):
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/match", response_model=MatchResponse)
-async def match_job(request: JobMatchRequest):
-    """Analyze how well a resume matches a job description."""
-    score = 75
-    return MatchResponse(
-        overall_score=score,
-        skill_match=score + 5,
-        experience_match=score - 3,
-        missing_keywords=["TypeScript", "System Design"],
-        matching_keywords=["React", "Python", "FastAPI", "PostgreSQL"],
-    )
+async def match_job(
+    request: JobMatchRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Score how well the candidate's profile matches a job.
+
+    Tier 1 — Full JD scoring (description > 150 chars):
+      Skills overlap, experience level, role alignment, education — all 4 components.
+
+    Tier 2 — Title-only scoring (no JD or JD too short):
+      Claude infers likely requirements from the job title + company name alone.
+      Score is marked score_basis="title_only" so the UI can show it as estimated (~68).
+    """
+    if not settings.ANTHROPIC_API_KEY:
+        return MatchResponse(
+            overall_score=70, skill_match=70, experience_match=70,
+            missing_keywords=[], matching_keywords=[],
+            score_basis="title_only", reasoning="No API key configured",
+        )
+
+    # Load profile
+    result = await db.execute(select(UserProfile).where(UserProfile.user_id == current_user.id))
+    profile_row = result.scalar_one_or_none()
+    profile_data: dict = profile_row.data or {} if profile_row else {}
+
+    # Build compact candidate snapshot for the prompt
+    skills        = ", ".join(profile_data.get("skills", [])[:30]) or "not specified"
+    years_exp     = profile_data.get("years_experience") or "not specified"
+    exp_list      = profile_data.get("experience", [])
+    current_title = exp_list[0].get("title", "") if exp_list else ""
+    current_co    = exp_list[0].get("company", "") if exp_list else ""
+    edu_list      = profile_data.get("education", [])
+    education     = edu_list[0].get("degree", "") + " " + edu_list[0].get("institution", "") if edu_list else "not specified"
+    summary       = str(profile_data.get("summary", ""))[:300]
+
+    has_jd    = len(request.description.strip()) > 150
+    jd_block  = request.description[:2000] if has_jd else ""
+    basis     = "full_jd" if has_jd else "title_only"
+
+    if has_jd:
+        prompt = f"""You are a technical recruiter scoring a candidate's fit for a job.
+
+Candidate profile:
+- Skills: {skills}
+- Years of experience: {years_exp}
+- Current/recent role: {current_title} at {current_co}
+- Education: {education}
+- Summary: {summary}
+
+Job posting:
+- Title: {request.job_title}
+- Company: {request.company}
+- Description: {jd_block}
+
+Score this candidate (0-100 for each):
+- skill_match: % of required/preferred skills in the JD that the candidate has
+- experience_match: how well their years and seniority level match the JD requirements
+- title_match: how closely their recent role aligns with this role
+- education_match: how well their education meets the JD requirements
+
+overall_score = skill_match*0.45 + experience_match*0.30 + title_match*0.15 + education_match*0.10
+
+Return ONLY valid JSON, no explanation:
+{{
+  "overall_score": <int 0-100>,
+  "skill_match": <int 0-100>,
+  "experience_match": <int 0-100>,
+  "matching_skills": ["skill1", "skill2"],
+  "missing_skills": ["skill3", "skill4"],
+  "reasoning": "<one sentence explaining the score>"
+}}"""
+    else:
+        prompt = f"""You are a technical recruiter scoring a candidate's fit for a role.
+You do NOT have the full job description — score based on the job title and company only.
+
+Candidate profile:
+- Skills: {skills}
+- Years of experience: {years_exp}
+- Current/recent role: {current_title} at {current_co}
+- Education: {education}
+
+Job: {request.job_title} at {request.company}
+
+Infer typical requirements for this type of role at this company, then score the candidate.
+Be honest — if the title/company gives little signal, reflect that with a mid-range score.
+
+Return ONLY valid JSON:
+{{
+  "overall_score": <int 0-100>,
+  "skill_match": <int 0-100>,
+  "experience_match": <int 0-100>,
+  "matching_skills": ["skill1"],
+  "missing_skills": ["skill2"],
+  "reasoning": "<one sentence — note this is estimated from title only>"
+}}"""
+
+    try:
+        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+        msg = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=400,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = msg.content[0].text.strip()
+        # Strip markdown code fences if Claude wraps the JSON
+        raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        data = json.loads(raw)
+
+        return MatchResponse(
+            overall_score=max(0, min(100, int(data.get("overall_score", 65)))),
+            skill_match=max(0, min(100, int(data.get("skill_match", 65)))),
+            experience_match=max(0, min(100, int(data.get("experience_match", 65)))),
+            matching_keywords=data.get("matching_skills", [])[:10],
+            missing_keywords=data.get("missing_skills", [])[:10],
+            score_basis=basis,
+            reasoning=str(data.get("reasoning", ""))[:200],
+        )
+    except Exception as exc:
+        # Fallback — never block the page load
+        return MatchResponse(
+            overall_score=65, skill_match=65, experience_match=65,
+            missing_keywords=[], matching_keywords=[],
+            score_basis=basis, reasoning=f"Scoring unavailable: {exc}",
+        )
 
 
 @router.post("/tailor")

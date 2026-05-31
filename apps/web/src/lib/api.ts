@@ -20,7 +20,14 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail ?? "Request failed");
+    const detail = err.detail;
+    // FastAPI returns detail as a string for HTTPException, or an array of
+    // validation error objects for 422 Unprocessable Entity.
+    const msg =
+      typeof detail === "string"  ? detail :
+      Array.isArray(detail)       ? detail.map((e: { msg?: string }) => e.msg ?? String(e)).join(", ") :
+                                    "Request failed";
+    throw new Error(msg);
   }
   return res.json() as Promise<T>;
 }

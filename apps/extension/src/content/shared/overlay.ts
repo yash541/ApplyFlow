@@ -17,6 +17,71 @@ export type AppRecord = {
   job_url: string | null;
 } | null;
 
+// ── Score animation ───────────────────────────────────────────────────────────
+
+let _animTimer: ReturnType<typeof setInterval> | null = null;
+let _animCurrent = 0;
+
+function _clearAnim() {
+  if (_animTimer) { clearInterval(_animTimer); _animTimer = null; }
+}
+
+function _scoreEl()  { return document.querySelector<HTMLElement>(".af-score-value");  }
+function _bubbleEl() { return document.querySelector<HTMLElement>(".af-bubble-score"); }
+function _tierEl()   { return document.querySelector<HTMLElement>(".af-tier"); }
+
+function startScoreAnim() {
+  _animCurrent = 0;
+  _clearAnim();
+  _animTimer = setInterval(() => {
+    if (_animCurrent >= 55) { _clearAnim(); return; }
+    _animCurrent += 1;
+    const s = _scoreEl(); const b = _bubbleEl();
+    if (s) s.textContent = String(_animCurrent);
+    if (b) b.textContent = String(_animCurrent);
+  }, 30); // 1 per 30ms → 0→55 in ~1.65s
+}
+
+/** Called when the real score arrives — counts from the current animated value
+ *  to the final score, then flashes green to signal completion. */
+export function updateOverlayScore(finalScore: number, scoreBasis: string): void {
+  _clearAnim();
+  const isEst = scoreBasis === "title_only";
+  let cur      = _animCurrent;
+  const step   = finalScore >= cur ? 1 : -1;
+  const dist   = Math.abs(finalScore - cur);
+
+  // Target ~400ms for the sprint regardless of distance.
+  // Minimum 5ms so it never looks frozen; maximum 30ms so it never drags.
+  const interval = dist > 0 ? Math.min(30, Math.max(5, Math.floor(400 / dist))) : 5;
+
+  _animTimer = setInterval(() => {
+    if (cur === finalScore) {
+      _clearAnim();
+      // Flash green to confirm lock-in
+      const s = _scoreEl();
+      if (s) {
+        s.style.transition = "color 0.25s";
+        s.style.color = "#6ee7b7";
+        setTimeout(() => { const el = _scoreEl(); if (el) el.style.color = ""; }, 700);
+      }
+      // Update tier label with real score
+      const t = _tierEl();
+      if (t) {
+        const tier = finalScore >= 85 ? "🟢 Excellent" : finalScore >= 70 ? "🔵 Good" : finalScore >= 50 ? "🟡 Fair" : "🔴 Low";
+        t.textContent = `${tier} Match${isEst ? " (est.)" : ""}`;
+      }
+      return;
+    }
+    cur += step;
+    _animCurrent = cur;
+    const display = isEst ? `~${cur}` : String(cur);
+    const s = _scoreEl(); const b = _bubbleEl();
+    if (s) s.textContent = display;
+    if (b) b.textContent = display;
+  }, interval);
+}
+
 // ── Pipeline helpers ──────────────────────────────────────────────────────────
 
 const PIPELINE = ["saved", "applied", "interview", "offer"] as const;
@@ -99,13 +164,23 @@ export function injectOverlay(
   existing: AppRecord = null,
   fingerprint?: JobFingerprint,
   onAppSaved?: (appId: string) => void,
+  scoreBasis: string = "full_jd",
 ): void {
   document.getElementById("applyflow-overlay")?.remove();
+
+  _clearAnim();
+  _animCurrent = matchScore;
+
+  const isLoading   = scoreBasis === "loading";
+  const isEstimated = scoreBasis === "title_only";
+  const displayScore = isLoading ? "0" : isEstimated ? `~${matchScore}` : `${matchScore}`;
 
   const tierLabel =
     matchScore >= 85 ? "🟢 Excellent" :
     matchScore >= 70 ? "🔵 Good" :
     matchScore >= 50 ? "🟡 Fair" : "🔴 Low";
+
+  const tierSuffix = isEstimated ? " (est.)" : isLoading ? "…" : "";
 
   const actionsHtml = existing
     ? buildTrackedSection(existing)
@@ -121,13 +196,13 @@ export function injectOverlay(
       </div>
       <div class="af-score-section">
         <div class="af-score-ring">
-          <span class="af-score-value">${matchScore}</span>
+          <span class="af-score-value">${displayScore}</span>
           <span class="af-score-label">match</span>
         </div>
         <div class="af-score-info">
           <p class="af-company">${jobData.company}</p>
           <p class="af-title">${jobData.title}</p>
-          <p class="af-tier">${tierLabel} Match</p>
+          <p class="af-tier">${tierLabel} Match${tierSuffix}</p>
         </div>
       </div>
       <div class="af-actions" id="af-actions">
@@ -136,11 +211,14 @@ export function injectOverlay(
     </div>
     <button class="af-bubble" id="af-bubble">
       <span class="af-bubble-logo">⚡</span>
-      <span class="af-bubble-score">${matchScore}</span>
+      <span class="af-bubble-score">${displayScore}</span>
     </button>
   `;
 
   document.body.appendChild(container);
+
+  // Start the count-up animation immediately after the overlay is in the DOM
+  if (isLoading) startScoreAnim();
 
   // ── Panel open/close ──────────────────────────────────────────────────────
   const panel = document.getElementById("af-panel") as HTMLElement;
@@ -209,23 +287,39 @@ export function injectOverlay(
         const btn = document.getElementById("af-advance") as HTMLButtonElement | null;
         const nextStatus = NEXT_STATUS[currentApp.status];
         if (!btn || !nextStatus) return;
-        btn.disabled = true;
-        btn.textContent = "Updating…";
 
-        chrome.runtime.sendMessage(
-          { type: "UPDATE_APP_STATUS", payload: { id: currentApp.id, status: nextStatus } } as ExtensionMessage,
-          (res: { success?: boolean; error?: string; data?: AppRecord } | null) => {
-            if (chrome.runtime.lastError || !res?.success) {
-              if (btn) { btn.disabled = false; btn.textContent = `→ Move to ${PIPELINE_LABELS[nextStatus] ?? nextStatus}`; }
-              if (!res || res.error === "AUTH_REQUIRED") { loginRequiredToast(); } else {
-                showToast("error", "Update failed", res.error ?? "Could not update status.");
+        // Pre-flight auth check — verify session exists and hasn't expired
+        // before making the API call. Catches logout that wasn't synced yet.
+        chrome.storage.local.get("session", (result) => {
+          const session = result["session"] as { token?: string; expiresAt?: string } | null;
+          const expired = session?.expiresAt
+            ? Date.now() > new Date(session.expiresAt).getTime()
+            : false;
+
+          if (!session?.token || expired) {
+            if (expired) chrome.storage.local.remove("session");
+            loginRequiredToast();
+            return;
+          }
+
+          btn.disabled = true;
+          btn.textContent = "Updating…";
+
+          chrome.runtime.sendMessage(
+            { type: "UPDATE_APP_STATUS", payload: { id: currentApp.id, status: nextStatus } } as ExtensionMessage,
+            (res: { success?: boolean; error?: string; data?: AppRecord } | null) => {
+              if (chrome.runtime.lastError || !res?.success) {
+                if (btn) { btn.disabled = false; btn.textContent = `→ Move to ${PIPELINE_LABELS[nextStatus] ?? nextStatus}`; }
+                if (!res || res.error === "AUTH_REQUIRED") { loginRequiredToast(); } else {
+                  showToast("error", "Update failed", res.error ?? "Could not update status.");
+                }
+                return;
               }
-              return;
-            }
-            currentApp = { ...currentApp, status: nextStatus };
-            rerenderActions(currentApp);
-          },
-        );
+              currentApp = { ...currentApp, status: nextStatus };
+              rerenderActions(currentApp);
+            },
+          );
+        });
       });
     }
 
