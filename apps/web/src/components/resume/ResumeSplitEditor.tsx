@@ -892,17 +892,15 @@ export function ResumeSplitEditor() {
           </div>
         </div>
 
-        {/* Zoom + scroll container — overflow:auto enables both scrollbars when zoomed */}
-        <div className="flex-1 min-h-0 overflow-auto" style={{ scrollbarWidth: "thin" }}>
-          <div
-            style={{
-              transform: `scale(${zoom})`,
-              transformOrigin: "top left",
-              // Expand the layout footprint so scrollbars reflect true scaled size
-              width: zoom !== 1 ? `${Math.round((1 / zoom) * 100)}%` : "100%",
-              minHeight: zoom !== 1 ? `${Math.round((1 / zoom) * 100)}%` : "100%",
-            }}
-          >
+        {/* CSS zoom affects actual layout size (unlike transform:scale) so scrollbars work correctly */}
+        <div
+          className="flex-1 min-h-0"
+          style={{
+            overflow: zoom !== 1 ? "auto" : "hidden",
+            scrollbarWidth: "thin",
+          }}
+        >
+          <div style={{ zoom: zoom, height: zoom <= 1 ? "100%" : "auto" }}>
             <PdfViewer
               templateId={selectedTemplate}
               accentColor={accentColor}
