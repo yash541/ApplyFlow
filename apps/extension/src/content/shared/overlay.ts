@@ -370,7 +370,10 @@ export function injectOverlay(
         };
         // Notify portal-runner so it can start the submission detector
         if (newAppId) onAppSaved?.(newAppId);
-        injectOverlay(matchScore, jobData, app, fingerprint, onAppSaved);
+        // Use _animCurrent (live displayed score) not matchScore (was 0 for loading state)
+        const liveScore = _animCurrent > 0 ? _animCurrent : matchScore;
+        const liveBasis = _animCurrent > 0 ? "full_jd" : (scoreBasis || "full_jd");
+        injectOverlay(liveScore, jobData, app, fingerprint, onAppSaved, liveBasis);
       },
     );
   });
