@@ -802,7 +802,7 @@ export function ResumeSplitEditor() {
         resumeId = saved.id;
         setSavedResumeId(saved.id);
       } else {
-        // General resume — no job link, save with the user-provided name
+        // General resume — first save, no job link
         const saved = await api.resumes.saveTailored({
           application_id: null,
           name: generalName.trim() || `General Resume – ${new Date().toLocaleDateString()}`,
@@ -811,13 +811,15 @@ export function ResumeSplitEditor() {
         });
         resumeId = saved.id;
         setSavedResumeId(saved.id);
-        setSaveState("saved");
-        // Redirect back to Resume Lab after brief "Saved" confirmation
-        setTimeout(() => setTailoredContent(null), 1200);
-        return;
       }
 
       setSaveState("saved");
+
+      // General resumes (no job link) always redirect back to Resume Lab after saving
+      if (!activeApplicationId) {
+        setTimeout(() => setTailoredContent(null), 1200);
+        return;
+      }
 
       // If opened from a job card (has application link), notify + redirect back
       if (activeApplicationId && resumeId) {
@@ -864,7 +866,7 @@ export function ResumeSplitEditor() {
   // Show loading screen immediately when tailoring starts — user doesn't wait on the upload page
   if (tailoringInProgress && !content) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-6 bg-[#0d0d0d] text-white/60">
+      <div className="fixed inset-0 flex flex-col items-center justify-center gap-6 bg-[#0d0d0d] text-white/60" style={{ zIndex: 10 }}>
         <div className="relative">
           <div className="h-16 w-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
             <Sparkles className="h-8 w-8 text-primary animate-pulse" />
