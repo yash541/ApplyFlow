@@ -496,6 +496,18 @@ export function ResumeSplitEditor() {
   const latestBlobRef = useRef<Blob | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [zoom, setZoom] = useState(1.0);
+  const previewContainerRef = useRef<HTMLDivElement>(null);
+  const [previewSize, setPreviewSize] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = previewContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) setPreviewSize({ w: entry.contentRect.width, h: entry.contentRect.height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const [showOriginal, setShowOriginal] = useState(false);
   const [showLayoutControls, setShowLayoutControls] = useState(false);
   const [newSkill, setNewSkill] = useState("");
@@ -892,27 +904,57 @@ export function ResumeSplitEditor() {
           </div>
         </div>
 
-        {/* CSS zoom affects actual layout size (unlike transform:scale) so scrollbars work correctly */}
+        {/*
+          Zoom implementation for an iframe-based PDF viewer:
+          - ResizeObserver measures the natural container size (w × h)
+          - A layout spacer sets the scroll area to zoom×w by zoom×h
+          - The iframe sits at natural size inside, visually scaled with transform:scale
+          - This gives correct scrollbars + iframe renders at full resolution
+        */}
         <div
+          ref={previewContainerRef}
           className="flex-1 min-h-0"
-          style={{
-            overflow: zoom !== 1 ? "auto" : "hidden",
-            scrollbarWidth: "thin",
-          }}
+          style={{ overflow: zoom !== 1 ? "auto" : "hidden", scrollbarWidth: "thin", position: "relative" }}
         >
-          <div style={{ zoom: zoom, height: zoom <= 1 ? "100%" : "auto" }}>
-            <PdfViewer
-              templateId={selectedTemplate}
-              accentColor={accentColor}
-              fontStyle={fontStyle}
-              compact={compact}
-              layout={layout}
-              sectionOrder={visibleOrder}
-              columnMap={selectedTemplate === "modern" ? columnMap : undefined}
-              content={content}
-              onBlobReady={(blob) => { latestBlobRef.current = blob; }}
-            />
-          </div>
+          {previewSize.w > 0 && (
+            /* Layout spacer — occupies zoom × natural size so scroll area is correct */
+            <div style={{ width: previewSize.w * zoom, height: previewSize.h * zoom, position: "relative", flexShrink: 0 }}>
+              {/* Iframe at natural size, scaled visually from top-left */}
+              <div style={{
+                position: "absolute", top: 0, left: 0,
+                width: previewSize.w, height: previewSize.h,
+                transform: `scale(${zoom})`, transformOrigin: "top left",
+              }}>
+                <PdfViewer
+                  templateId={selectedTemplate}
+                  accentColor={accentColor}
+                  fontStyle={fontStyle}
+                  compact={compact}
+                  layout={layout}
+                  sectionOrder={visibleOrder}
+                  columnMap={selectedTemplate === "modern" ? columnMap : undefined}
+                  content={content}
+                  onBlobReady={(blob) => { latestBlobRef.current = blob; }}
+                />
+              </div>
+            </div>
+          )}
+          {/* Fallback while container size is measured */}
+          {previewSize.w === 0 && (
+            <div className="w-full h-full">
+              <PdfViewer
+                templateId={selectedTemplate}
+                accentColor={accentColor}
+                fontStyle={fontStyle}
+                compact={compact}
+                layout={layout}
+                sectionOrder={visibleOrder}
+                columnMap={selectedTemplate === "modern" ? columnMap : undefined}
+                content={content}
+                onBlobReady={(blob) => { latestBlobRef.current = blob; }}
+              />
+            </div>
+          )}
         </div>
 
         {analysis && (
