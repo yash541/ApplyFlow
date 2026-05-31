@@ -905,53 +905,64 @@ export function ResumeSplitEditor() {
         </div>
 
         {/*
-          Zoom implementation for an iframe-based PDF viewer:
-          - ResizeObserver measures the natural container size (w × h)
-          - A layout spacer sets the scroll area to zoom×w by zoom×h
-          - The iframe sits at natural size inside, visually scaled with transform:scale
-          - This gives correct scrollbars + iframe renders at full resolution
+          Three zoom scenarios for an iframe-based PDF viewer:
+
+          zoom > 1 (zoom in): spacer = zoom×naturalSize creates scroll area;
+                              iframe at natural size, scaled from top-left.
+
+          zoom < 1 (zoom out): iframe at natural size, scaled from top-center
+                               so it appears centered with space around it.
+                               No scrollbars — content is smaller than viewport.
+
+          zoom = 1 (100%): original w-full h-full layout, no transform.
         */}
         <div
           ref={previewContainerRef}
           className="flex-1 min-h-0"
-          style={{ overflow: zoom !== 1 ? "auto" : "hidden", scrollbarWidth: "thin", position: "relative" }}
+          style={{ overflow: zoom > 1 ? "auto" : "hidden", scrollbarWidth: "thin", position: "relative" }}
         >
-          {previewSize.w > 0 && (
-            /* Layout spacer — occupies zoom × natural size so scroll area is correct */
+          {/* Fallback / zoom=1: fill container normally */}
+          {(previewSize.w === 0 || zoom === 1) && (
+            <div className="w-full h-full">
+              <PdfViewer
+                templateId={selectedTemplate} accentColor={accentColor} fontStyle={fontStyle}
+                compact={compact} layout={layout} sectionOrder={visibleOrder}
+                columnMap={selectedTemplate === "modern" ? columnMap : undefined}
+                content={content} onBlobReady={(blob) => { latestBlobRef.current = blob; }}
+              />
+            </div>
+          )}
+
+          {/* Zoom IN (>100%): layout spacer creates scroll area */}
+          {zoom > 1 && previewSize.w > 0 && (
             <div style={{ width: previewSize.w * zoom, height: previewSize.h * zoom, position: "relative", flexShrink: 0 }}>
-              {/* Iframe at natural size, scaled visually from top-left */}
               <div style={{
                 position: "absolute", top: 0, left: 0,
                 width: previewSize.w, height: previewSize.h,
                 transform: `scale(${zoom})`, transformOrigin: "top left",
               }}>
                 <PdfViewer
-                  templateId={selectedTemplate}
-                  accentColor={accentColor}
-                  fontStyle={fontStyle}
-                  compact={compact}
-                  layout={layout}
-                  sectionOrder={visibleOrder}
+                  templateId={selectedTemplate} accentColor={accentColor} fontStyle={fontStyle}
+                  compact={compact} layout={layout} sectionOrder={visibleOrder}
                   columnMap={selectedTemplate === "modern" ? columnMap : undefined}
-                  content={content}
-                  onBlobReady={(blob) => { latestBlobRef.current = blob; }}
+                  content={content} onBlobReady={(blob) => { latestBlobRef.current = blob; }}
                 />
               </div>
             </div>
           )}
-          {/* Fallback while container size is measured */}
-          {previewSize.w === 0 && (
-            <div className="w-full h-full">
+
+          {/* Zoom OUT (<100%): scale from top-center so PDF is horizontally centered */}
+          {zoom < 1 && previewSize.w > 0 && (
+            <div style={{
+              position: "absolute", top: 0, left: 0,
+              width: previewSize.w, height: previewSize.h,
+              transform: `scale(${zoom})`, transformOrigin: "top center",
+            }}>
               <PdfViewer
-                templateId={selectedTemplate}
-                accentColor={accentColor}
-                fontStyle={fontStyle}
-                compact={compact}
-                layout={layout}
-                sectionOrder={visibleOrder}
+                templateId={selectedTemplate} accentColor={accentColor} fontStyle={fontStyle}
+                compact={compact} layout={layout} sectionOrder={visibleOrder}
                 columnMap={selectedTemplate === "modern" ? columnMap : undefined}
-                content={content}
-                onBlobReady={(blob) => { latestBlobRef.current = blob; }}
+                content={content} onBlobReady={(blob) => { latestBlobRef.current = blob; }}
               />
             </div>
           )}
