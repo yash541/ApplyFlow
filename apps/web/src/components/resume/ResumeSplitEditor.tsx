@@ -867,13 +867,8 @@ export function ResumeSplitEditor() {
   if (tailoringInProgress && !content) {
     return (
       <div className="fixed inset-0 flex flex-col items-center justify-center gap-6 bg-[#0d0d0d] text-white/60" style={{ zIndex: 10 }}>
-        <div className="relative">
-          <div className="h-16 w-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
-            <Sparkles className="h-8 w-8 text-primary animate-pulse" />
-          </div>
-          <div className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-[#0d0d0d] flex items-center justify-center">
-            <Loader2 className="h-4 w-4 animate-spin text-primary" />
-          </div>
+        <div className="h-16 w-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+          <Sparkles className="h-8 w-8 text-primary animate-pulse" />
         </div>
         <div className="text-center space-y-1">
           <p className="text-sm font-semibold text-white/80">AI is tailoring your resume…</p>
