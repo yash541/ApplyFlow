@@ -248,16 +248,28 @@ function EditableField({
 
   if (editing) {
     return (
-      <input
+      <textarea
         autoFocus
         value={draft}
-        onChange={e => setDraft(e.target.value)}
+        rows={1}
+        onChange={e => {
+          setDraft(e.target.value);
+          // Auto-resize: shrink then grow to fit content
+          e.target.style.height = "auto";
+          e.target.style.height = `${e.target.scrollHeight}px`;
+        }}
+        onFocus={e => {
+          e.target.style.height = "auto";
+          e.target.style.height = `${e.target.scrollHeight}px`;
+        }}
         onBlur={() => { onSave(draft); setEditing(false); }}
         onKeyDown={e => {
-          if (e.key === "Enter") { onSave(draft); setEditing(false); }
           if (e.key === "Escape") { setDraft(value); setEditing(false); }
+          // Enter saves only if Shift not held; Shift+Enter inserts newline
+          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onSave(draft); setEditing(false); }
         }}
-        className={`bg-surface-container-high border border-primary/50 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary/40 w-full ${className}`}
+        className={`bg-surface-container-high border border-primary/50 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary/40 w-full resize-none overflow-hidden leading-snug ${className}`}
+        style={{ minHeight: "1.75rem" }}
       />
     );
   }
@@ -267,7 +279,7 @@ function EditableField({
       className={`cursor-text group/field inline-flex items-center gap-1 hover:text-on-surface transition-colors ${className} ${!value ? "italic opacity-40" : ""}`}
     >
       {value || placeholder}
-      <Pencil className="h-2.5 w-2.5 opacity-0 group-hover/field:opacity-60 transition-opacity shrink-0" />
+      <Pencil className="h-2.5 w-2.5 opacity-30 group-hover/field:opacity-70 transition-opacity shrink-0" />
     </span>
   );
 }
@@ -321,7 +333,7 @@ function EditableBullet({ value, onChange, role }: {
       >
         <span className="text-primary/60 mt-0.5 shrink-0 text-sm">•</span>
         <span className="flex-1 text-sm text-on-surface-variant leading-relaxed">{value}</span>
-        <Pencil className="h-3 w-3 mt-1 shrink-0 text-on-surface-variant/0 group-hover/bullet:text-primary/50 transition-all" />
+        <Pencil className="h-3 w-3 mt-1 shrink-0 text-on-surface-variant/25 group-hover/bullet:text-primary/70 transition-all" />
       </div>
     </>
   );
@@ -1180,7 +1192,7 @@ export function ResumeSplitEditor() {
                       <EditableField value={exp.duration} onSave={v => updateExpField(i, "duration", v)}
                         className="text-xs text-on-surface-variant/50" />
                       <button onClick={() => deleteExperience(i)}
-                        className="text-on-surface-variant/20 hover:text-red-400 transition-colors">
+                        className="text-on-surface-variant/40 hover:text-red-400 transition-colors">
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
@@ -1194,8 +1206,8 @@ export function ResumeSplitEditor() {
                           <EditableBullet value={b} onChange={v => updateBullet(i, j, v)} role={`${exp.title} at ${exp.company}`} />
                         </div>
                         <button onClick={() => deleteExpBullet(i, j)}
-                          className="mt-2 mr-1.5 opacity-0 group-hover/brow:opacity-100 text-on-surface-variant/30 hover:text-red-400 transition-all shrink-0">
-                          <X className="h-2.5 w-2.5" />
+                          className="mt-2 mr-1.5 opacity-40 group-hover/brow:opacity-100 text-on-surface-variant/40 hover:text-red-400 transition-all shrink-0">
+                          <X className="h-3 w-3" />
                         </button>
                       </div>
                     ))}
