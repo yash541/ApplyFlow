@@ -495,6 +495,7 @@ export function ResumeSplitEditor() {
 
   const latestBlobRef = useRef<Blob | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [zoom, setZoom] = useState(1.0);
   const [showOriginal, setShowOriginal] = useState(false);
   const [showLayoutControls, setShowLayoutControls] = useState(false);
   const [newSkill, setNewSkill] = useState("");
@@ -831,6 +832,25 @@ export function ResumeSplitEditor() {
             <span className="text-sm font-medium text-white/70">Resume Editor</span>
           </div>
           <div className="flex items-center gap-2">
+            {/* Zoom controls */}
+            <div className="flex items-center gap-0.5 border border-white/15 rounded-lg overflow-hidden">
+              <button
+                onClick={() => setZoom(z => Math.max(0.5, +(z - 0.1).toFixed(1)))}
+                className="h-8 w-7 flex items-center justify-center text-white/50 hover:text-white hover:bg-white/8 transition-colors text-sm font-bold"
+                title="Zoom out"
+              >−</button>
+              <button
+                onClick={() => setZoom(1.0)}
+                className="h-8 px-2 text-[11px] font-medium text-white/50 hover:text-white hover:bg-white/8 transition-colors tabular-nums min-w-[44px] text-center"
+                title="Reset zoom"
+              >{Math.round(zoom * 100)}%</button>
+              <button
+                onClick={() => setZoom(z => Math.min(2.0, +(z + 0.1).toFixed(1)))}
+                className="h-8 w-7 flex items-center justify-center text-white/50 hover:text-white hover:bg-white/8 transition-colors text-sm font-bold"
+                title="Zoom in"
+              >+</button>
+            </div>
+
             {(overflows || compact) && (
               <button
                 onClick={() => setCompact(v => !v)}
@@ -872,18 +892,29 @@ export function ResumeSplitEditor() {
           </div>
         </div>
 
-        <div className="flex-1 min-h-0">
-          <PdfViewer
-            templateId={selectedTemplate}
-            accentColor={accentColor}
-            fontStyle={fontStyle}
-            compact={compact}
-            layout={layout}
-            sectionOrder={visibleOrder}
-            columnMap={selectedTemplate === "modern" ? columnMap : undefined}
-            content={content}
-            onBlobReady={(blob) => { latestBlobRef.current = blob; }}
-          />
+        {/* Zoom + scroll container — overflow:auto enables both scrollbars when zoomed */}
+        <div className="flex-1 min-h-0 overflow-auto" style={{ scrollbarWidth: "thin" }}>
+          <div
+            style={{
+              transform: `scale(${zoom})`,
+              transformOrigin: "top left",
+              // Expand the layout footprint so scrollbars reflect true scaled size
+              width: zoom !== 1 ? `${Math.round((1 / zoom) * 100)}%` : "100%",
+              minHeight: zoom !== 1 ? `${Math.round((1 / zoom) * 100)}%` : "100%",
+            }}
+          >
+            <PdfViewer
+              templateId={selectedTemplate}
+              accentColor={accentColor}
+              fontStyle={fontStyle}
+              compact={compact}
+              layout={layout}
+              sectionOrder={visibleOrder}
+              columnMap={selectedTemplate === "modern" ? columnMap : undefined}
+              content={content}
+              onBlobReady={(blob) => { latestBlobRef.current = blob; }}
+            />
+          </div>
         </div>
 
         {analysis && (
@@ -1379,13 +1410,13 @@ export function ResumeSplitEditor() {
               </div>
             )}
 
-            {/* Keyword stuffing flags — phrases Claude flagged as potentially unnatural */}
+            {/* Keyword stuffing flags — phrases ApplyFlow AI flagged as potentially unnatural */}
             {(content.keyword_stuffing_flags?.length ?? 0) > 0 && (
               <div className="space-y-1.5">
                 <p className="text-[10px] font-semibold text-amber-400/70 uppercase tracking-wider px-1 flex items-center gap-1">
                   ⚠ Review These Phrases
                 </p>
-                <p className="text-[10px] text-on-surface-variant/40 px-1">Claude flagged these as possibly forced — review before sending.</p>
+                <p className="text-[10px] text-on-surface-variant/40 px-1">ApplyFlow AI flagged these as possibly forced — review before sending.</p>
                 <div className="flex flex-wrap gap-1.5">
                   {content.keyword_stuffing_flags!.map(flag => (
                     <span key={flag} className="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/25 text-[10px] text-amber-400 font-medium">{flag}</span>
