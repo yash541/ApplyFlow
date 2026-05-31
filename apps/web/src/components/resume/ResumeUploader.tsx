@@ -1,11 +1,166 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Upload, FileText, Loader2, X, Sparkles } from "lucide-react";
+import { Upload, FileText, Loader2, X, Sparkles, Search, Link2, Unlink } from "lucide-react";
 import { GlassPanel, Button } from "@applyflow/ui";
 import { useQueryClient } from "@tanstack/react-query";
-import { api, streamTailor } from "@/lib/api";
+import { api, streamTailor, type ApplicationData } from "@/lib/api";
 import { useResumeLabStore, type TailoredContent } from "@/store/resumeLab";
+import { createPortal } from "react-dom";
+
+// ── Job link picker modal ─────────────────────────────────────────────────────
+
+const STATUS_COLOR: Record<string, string> = {
+  saved: "#3b82f6", applied: "#6366f1", screening: "#6366f1",
+  interview: "#f59e0b", technical: "#f59e0b",
+  offer: "#10b981", rejected: "#ef4444",
+};
+const STATUS_LABEL: Record<string, string> = {
+  saved: "Saved", applied: "Applied", screening: "Applied",
+  interview: "Interview", technical: "Interview",
+  offer: "Offer", rejected: "Rejected",
+};
+
+function JobLinkModal({
+  preselectedId,
+  prefillCompany,
+  prefillRole,
+  onConfirm,
+  onCancel,
+}: {
+  preselectedId: string | null;
+  prefillCompany?: string;
+  prefillRole?: string;
+  onConfirm: (applicationId: string | null) => void;
+  onCancel: () => void;
+}) {
+  const [apps, setApps] = useState<ApplicationData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<string | null>(preselectedId);
+
+  useEffect(() => {
+    api.applications.list()
+      .then(r => { setApps(r.applications); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const filtered = apps.filter(a => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return a.company.toLowerCase().includes(q) || a.role.toLowerCase().includes(q);
+  });
+
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0f0f1f] shadow-2xl overflow-hidden">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/6">
+          <div>
+            <h2 className="text-sm font-semibold text-white/90">Which job is this resume for?</h2>
+            <p className="text-xs text-white/40 mt-0.5">
+              {(prefillCompany || prefillRole)
+                ? `Tailoring for: ${prefillRole ?? ""}${prefillCompany ? ` at ${prefillCompany}` : ""}`
+                : "Select a tracked application to link this tailored resume"}
+            </p>
+          </div>
+          <button onClick={onCancel} className="h-7 w-7 flex items-center justify-center rounded-lg text-white/35 hover:text-white hover:bg-white/8 transition-all">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="px-4 pt-3 pb-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white/30" />
+            <input
+              autoFocus
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search by company or role…"
+              className="w-full h-8 pl-9 pr-3 rounded-lg bg-white/5 border border-white/10 text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-primary/40"
+            />
+          </div>
+        </div>
+
+        {/* List */}
+        <div className="px-4 pb-2 max-h-64 overflow-y-auto space-y-1" style={{ scrollbarWidth: "thin" }}>
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-primary/50" />
+            </div>
+          ) : filtered.length === 0 ? (
+            <p className="text-xs text-white/30 text-center py-6">
+              {search ? "No matching applications" : "No tracked applications yet"}
+            </p>
+          ) : (
+            filtered.map(app => {
+              const color = STATUS_COLOR[app.status] ?? "#6b7280";
+              const label = STATUS_LABEL[app.status] ?? app.status;
+              const isSelected = selected === app.id;
+              return (
+                <button
+                  key={app.id}
+                  onClick={() => setSelected(isSelected ? null : app.id)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all
+                    ${isSelected
+                      ? "bg-primary/12 border border-primary/30"
+                      : "bg-white/[0.03] border border-transparent hover:bg-white/6 hover:border-white/8"}`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-semibold text-white/90 truncate">{app.company}</div>
+                    <div className="text-[11px] text-white/50 truncate">{app.role}</div>
+                  </div>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0"
+                    style={{ background: `${color}22`, color, border: `1px solid ${color}44` }}>
+                    {label}
+                  </span>
+                  {isSelected && <div className="w-4 h-4 rounded-full bg-primary flex items-center justify-center shrink-0">
+                    <span className="text-white text-[8px]">✓</span>
+                  </div>}
+                </button>
+              );
+            })
+          )}
+        </div>
+
+        {/* No link option */}
+        <div className="px-4 pb-3">
+          <div className="h-px bg-white/6 my-2" />
+          <button
+            onClick={() => setSelected(null)}
+            className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left text-xs transition-all
+              ${selected === null
+                ? "bg-white/8 border border-white/15 text-white/80"
+                : "text-white/40 hover:text-white/60 hover:bg-white/4"}`}
+          >
+            <Unlink className="h-3.5 w-3.5 shrink-0" />
+            No link — just tailor without tracking
+          </button>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-white/6 bg-white/[0.02]">
+          <button onClick={onCancel}
+            className="h-8 px-4 rounded-lg text-xs text-white/50 hover:text-white/80 hover:bg-white/5 transition-all">
+            Cancel
+          </button>
+          <button
+            onClick={() => onConfirm(selected)}
+            className="h-8 px-5 rounded-lg text-xs font-semibold bg-primary/90 hover:bg-primary text-white transition-all flex items-center gap-1.5"
+          >
+            <Sparkles className="h-3 w-3" />
+            Tailor Resume →
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
 
 function parseJsonResponse(raw: string): TailoredContent | null {
   try {
@@ -32,6 +187,8 @@ export function ResumeUploader() {
   const [jobDesc, setJobDesc] = useState("");
   const [isTailoring, setIsTailoring] = useState(false);
   const [streamPreview, setStreamPreview] = useState("");
+  const [showJobPicker, setShowJobPicker] = useState(false);
+  const { activeApplicationId } = useResumeLabStore();
 
   useEffect(() => {
     const raw = sessionStorage.getItem("af_tailor_prefill");
@@ -230,7 +387,9 @@ export function ResumeUploader() {
         <Button
           variant="primary"
           className="w-full"
-          onClick={() => void handleTailor()}
+          onClick={() => {
+            if (!isTailoring && hasResume && jobDesc.trim()) setShowJobPicker(true);
+          }}
           disabled={isTailoring || !hasResume || !jobDesc.trim()}
         >
           <Sparkles className="h-4 w-4" />
@@ -240,6 +399,23 @@ export function ResumeUploader() {
             ? "AI Tailor Resume"
             : "Select a resume first"}
         </Button>
+
+        {/* Job link acknowledgment modal */}
+        {showJobPicker && (
+          <JobLinkModal
+            preselectedId={activeApplicationId ?? null}
+            prefillCompany={prefillCompany}
+            prefillRole={prefillRole}
+            onCancel={() => setShowJobPicker(false)}
+            onConfirm={(applicationId) => {
+              setShowJobPicker(false);
+              // Set the confirmed application link before tailoring
+              if (applicationId) setActiveApplication(applicationId);
+              else setActiveApplication("");
+              void handleTailor();
+            }}
+          />
+        )}
       </div>
 
       {/* Streaming progress — shows live output so user sees real progress */}

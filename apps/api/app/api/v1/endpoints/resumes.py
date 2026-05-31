@@ -42,10 +42,10 @@ def _serialize_detail(r: Resume) -> dict:
 # ── Request bodies ────────────────────────────────────────────────────────────
 
 class SaveTailoredRequest(BaseModel):
-    application_id: str
-    tailored_content: dict          # full TailoredContent JSON from the editor
-    name: str | None = None         # auto-generated from company/role if omitted
-    pdf_bytes: str | None = None    # base64-encoded PDF for extension file upload
+    application_id: str | None = None   # null → saved as General Resume (no job link)
+    tailored_content: dict              # full TailoredContent JSON from the editor
+    name: str | None = None             # required when application_id is null
+    pdf_bytes: str | None = None        # base64-encoded PDF for extension file upload
 
 
 class UpdateResumeRequest(BaseModel):
@@ -128,53 +128,63 @@ async def save_tailored_resume(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Save (or update) the tailored resume for a job application.
-    Idempotent: if one already exists for this application_id, it is updated in place.
+    Save a tailored resume.
+
+    - With application_id: linked to a specific tracked job (upsert by application).
+    - Without application_id: saved as a General Resume (standalone, no job link).
+      `name` is required in this case.
     """
-    app_id = uuid.UUID(request.application_id)
-
-    # Check ownership of the application
-    from app.models import Application
-    app_result = await db.execute(
-        select(Application).where(
-            Application.id == app_id,
-            Application.user_id == current_user.id,
-        )
-    )
-    application = app_result.scalar_one_or_none()
-    if not application:
-        raise HTTPException(status_code=404, detail="Application not found")
-
-    # Auto-generate name from company + role if not provided
-    name = request.name or f"{application.company} – {application.role}"
-
-    # Upsert: update existing tailored resume or create a new one
-    existing_result = await db.execute(
-        select(Resume).where(
-            Resume.application_id == app_id,
-            Resume.user_id == current_user.id,
-            Resume.type == "tailored",
-        )
-    )
-    resume = existing_result.scalar_one_or_none()
-
     ats = request.tailored_content.get("ats_score")
 
-    if resume:
-        resume.tailored_content = request.tailored_content
-        resume.name = name
-        resume.ats_score = ats
-        if request.pdf_bytes is not None:
-            resume.pdf_bytes = request.pdf_bytes
+    # ── Linked to a job ───────────────────────────────────────────────────────
+    if request.application_id:
+        app_id = uuid.UUID(request.application_id)
+        from app.models import Application
+        app_result = await db.execute(
+            select(Application).where(
+                Application.id == app_id,
+                Application.user_id == current_user.id,
+            )
+        )
+        application = app_result.scalar_one_or_none()
+        if not application:
+            raise HTTPException(status_code=404, detail="Application not found")
+
+        name = request.name or f"{application.company} – {application.role}"
+
+        # Upsert — one tailored resume per application
+        existing_result = await db.execute(
+            select(Resume).where(
+                Resume.application_id == app_id,
+                Resume.user_id == current_user.id,
+                Resume.type == "tailored",
+            )
+        )
+        resume = existing_result.scalar_one_or_none()
+        if resume:
+            resume.tailored_content = request.tailored_content
+            resume.name = name
+            resume.ats_score = ats
+            if request.pdf_bytes is not None:
+                resume.pdf_bytes = request.pdf_bytes
+        else:
+            resume = Resume(
+                user_id=current_user.id, type="tailored", name=name,
+                tailored_content=request.tailored_content,
+                application_id=app_id, ats_score=ats, pdf_bytes=request.pdf_bytes,
+            )
+            db.add(resume)
+
+    # ── General Resume (no job link) ──────────────────────────────────────────
     else:
+        name = (request.name or "").strip()
+        if not name:
+            raise HTTPException(status_code=422, detail="name is required for general resumes")
+
         resume = Resume(
-            user_id=current_user.id,
-            type="tailored",
-            name=name,
+            user_id=current_user.id, type="tailored", name=name,
             tailored_content=request.tailored_content,
-            application_id=app_id,
-            ats_score=ats,
-            pdf_bytes=request.pdf_bytes,
+            application_id=None, ats_score=ats, pdf_bytes=request.pdf_bytes,
         )
         db.add(resume)
 

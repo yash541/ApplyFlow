@@ -514,6 +514,10 @@ export function ResumeSplitEditor() {
   const latestBlobRef = useRef<Blob | null>(null);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [zoom, setZoom] = useState(1.0);
+  // Name for general (unlinked) resumes — shown as editable input in toolbar
+  const [generalName, setGeneralName] = useState(
+    `General Resume – ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+  );
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const [previewSize, setPreviewSize] = useState({ w: 0, h: 0 });
   useEffect(() => {
@@ -778,7 +782,7 @@ export function ResumeSplitEditor() {
 
   // ── Save to DB ────────────────────────────────────────────────────────────
   async function handleSave() {
-    if (!content || (!activeApplicationId && !savedResumeId)) return;
+    if (!content) return;
     setSaveState("saving");
     try {
       const tailored_content = content as unknown as Record<string, unknown>;
@@ -790,9 +794,21 @@ export function ResumeSplitEditor() {
       }
 
       if (savedResumeId) {
+        // Updating an already-saved resume
         await api.resumes.update(savedResumeId, { tailored_content, pdf_bytes });
       } else if (activeApplicationId) {
+        // Linked to a tracked job
         const saved = await api.resumes.saveTailored({ application_id: activeApplicationId, tailored_content, pdf_bytes });
+        resumeId = saved.id;
+        setSavedResumeId(saved.id);
+      } else {
+        // General resume — no job link, save with the user-provided name
+        const saved = await api.resumes.saveTailored({
+          application_id: null,
+          name: generalName.trim() || `General Resume – ${new Date().toLocaleDateString()}`,
+          tailored_content,
+          pdf_bytes,
+        });
         resumeId = saved.id;
         setSavedResumeId(saved.id);
       }
@@ -892,34 +908,35 @@ export function ResumeSplitEditor() {
                 {compact ? "Compact on" : "Fit to 1 page"}
               </button>
             )}
-            {(!activeApplicationId && !savedResumeId) ? (
-              <span
-                title="Tailor from a job card to save to your tracker"
-                className="h-8 px-4 rounded-lg text-sm font-medium flex items-center gap-1.5 border border-white/10 text-white/20 cursor-not-allowed select-none"
-              >
-                <Save className="h-3.5 w-3.5" /> Save
-              </span>
-            ) : (
-              <button
-                onClick={() => void handleSave()}
-                disabled={saveState === "saving"}
-                className={`h-8 px-4 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all disabled:opacity-50 border
-                  ${saveState === "saved"
-                    ? "bg-green-500/15 border-green-500/30 text-green-400"
-                    : saveState === "error"
-                    ? "bg-error/15 border-error/30 text-error"
-                    : "bg-primary/15 border-primary/30 text-primary hover:bg-primary/25"}`}
-              >
-                {saveState === "saving"
-                  ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</>
-                  : saveState === "saved"
-                  ? <><Check className="h-3.5 w-3.5" /> Saved</>
-                  : saveState === "error"
-                  ? "Save failed — retry"
-                  : <><Save className="h-3.5 w-3.5" /> Save</>
-                }
-              </button>
+            {/* Name input for general (unlinked) resumes */}
+            {!activeApplicationId && !savedResumeId && (
+              <input
+                value={generalName}
+                onChange={e => setGeneralName(e.target.value)}
+                placeholder="Resume name…"
+                className="h-8 px-3 rounded-lg text-xs bg-white/5 border border-white/12 text-white/70 placeholder:text-white/30 focus:outline-none focus:border-primary/40 w-44"
+                title="Name for this general resume"
+              />
             )}
+            <button
+              onClick={() => void handleSave()}
+              disabled={saveState === "saving"}
+              className={`h-8 px-4 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all disabled:opacity-50 border
+                ${saveState === "saved"
+                  ? "bg-green-500/15 border-green-500/30 text-green-400"
+                  : saveState === "error"
+                  ? "bg-error/15 border-error/30 text-error"
+                  : "bg-primary/15 border-primary/30 text-primary hover:bg-primary/25"}`}
+            >
+              {saveState === "saving"
+                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</>
+                : saveState === "saved"
+                ? <><Check className="h-3.5 w-3.5" /> Saved</>
+                : saveState === "error"
+                ? "Save failed — retry"
+                : <><Save className="h-3.5 w-3.5" /> Save</>
+              }
+            </button>
           </div>
         </div>
 

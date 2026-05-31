@@ -158,9 +158,9 @@ export const api = {
     },
 
     saveTailored: (data: {
-      application_id: string;
-      tailored_content: Record<string, unknown>;
+      application_id?: string | null;
       name?: string;
+      tailored_content: Record<string, unknown>;
       pdf_bytes?: string;
     }) =>
       request<ResumeData>("/api/v1/resumes/tailored", { method: "POST", body: data }),

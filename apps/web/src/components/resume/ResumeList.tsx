@@ -213,8 +213,9 @@ export function ResumeList() {
   }
 
   const resumes = resumeData?.resumes ?? [];
-  const baseResumes = resumes.filter((r) => r.type === "base");
-  const tailoredResumes = resumes.filter((r) => r.type === "tailored");
+  const baseResumes     = resumes.filter((r) => r.type === "base");
+  const tailoredResumes = resumes.filter((r) => r.type === "tailored" && !!r.application_id);
+  const generalResumes  = resumes.filter((r) => r.type === "tailored" && !r.application_id);
 
   if (resumesLoading) {
     return (
@@ -268,7 +269,7 @@ export function ResumeList() {
               </div>
             )}
 
-            {/* Tailored resumes */}
+            {/* Tailored resumes — linked to a specific job */}
             {tailoredResumes.length > 0 && (
               <div className="space-y-2">
                 <p className="text-label-sm font-semibold text-on-surface-variant/60 uppercase tracking-wider">
@@ -283,6 +284,33 @@ export function ResumeList() {
                     isViewLoading={viewLoadingId === resume.id}
                     appStatus={getAppStatus(resume)}
                     canEdit={canEditResume(resume)}
+                    onUse={() => {}}
+                    onEdit={() => void handleEdit(resume)}
+                    onView={() => void handleView(resume)}
+                    onDelete={() => deleteMutation.mutate(resume.id)}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* General resumes — tailored without a specific job link */}
+            {generalResumes.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-label-sm font-semibold text-on-surface-variant/60 uppercase tracking-wider">
+                  General Resumes
+                </p>
+                <p className="text-[11px] text-on-surface-variant/40 -mt-1">
+                  AI-tailored but not linked to a specific job application
+                </p>
+                {generalResumes.map((resume) => (
+                  <ResumeRow
+                    key={resume.id}
+                    resume={resume}
+                    isSelected={false}
+                    isLoading={loadingId === resume.id}
+                    isViewLoading={viewLoadingId === resume.id}
+                    appStatus={null}
+                    canEdit={true}
                     onUse={() => {}}
                     onEdit={() => void handleEdit(resume)}
                     onView={() => void handleView(resume)}
