@@ -9,7 +9,7 @@ import { ResumeSplitEditor } from "./ResumeSplitEditor";
 import { GradientText } from "@applyflow/ui";
 
 export function ResumeLab() {
-  const { tailoredContent, savedResumeId, openResume } = useResumeLabStore();
+  const { tailoredContent, tailoringInProgress, savedResumeId, openResume } = useResumeLabStore();
 
   // Handle "Open Resume" from the browser extension
   useEffect(() => {
@@ -42,7 +42,7 @@ export function ResumeLab() {
     return () => window.removeEventListener("af_open_resume", onEvent);
   }, [openResume]);
 
-  if (tailoredContent) {
+  if (tailoredContent || tailoringInProgress) {
     return <ResumeSplitEditor />;
   }
 

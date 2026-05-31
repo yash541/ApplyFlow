@@ -460,7 +460,7 @@ function SectionHeader({ label }: { label: string }) {
 // ─── Main Split Editor ────────────────────────────────────────────────────────
 export function ResumeSplitEditor() {
   const {
-    tailoredContent, selectedContent,
+    tailoredContent, tailoringInProgress, selectedContent,
     selectedTemplate, accentColor, fontStyle,
     activeApplicationId, savedResumeId,
     draftContent, editorPrefs,
@@ -811,6 +811,10 @@ export function ResumeSplitEditor() {
         });
         resumeId = saved.id;
         setSavedResumeId(saved.id);
+        setSaveState("saved");
+        // Redirect back to Resume Lab after brief "Saved" confirmation
+        setTimeout(() => setTailoredContent(null), 1200);
+        return;
       }
 
       setSaveState("saved");
@@ -856,6 +860,33 @@ export function ResumeSplitEditor() {
   }
 
   const overflows = (analysis?.estimatedPages ?? 0) > 1.05;
+
+  // Show loading screen immediately when tailoring starts — user doesn't wait on the upload page
+  if (tailoringInProgress && !content) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-6 bg-[#0d0d0d] text-white/60">
+        <div className="relative">
+          <div className="h-16 w-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+            <Sparkles className="h-8 w-8 text-primary animate-pulse" />
+          </div>
+          <div className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-[#0d0d0d] flex items-center justify-center">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+          </div>
+        </div>
+        <div className="text-center space-y-1">
+          <p className="text-sm font-semibold text-white/80">AI is tailoring your resume…</p>
+          <p className="text-xs text-white/40">Analysing job description · Rewriting bullets · Optimising for ATS</p>
+        </div>
+        <div className="flex gap-1.5">
+          {[0,1,2,3,4].map(i => (
+            <div key={i} className="h-1 w-8 rounded-full bg-primary/20 overflow-hidden">
+              <div className="h-full bg-primary/60 rounded-full animate-pulse" style={{ animationDelay: `${i * 0.15}s` }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (!content) return null;
 

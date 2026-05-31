@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import {
   FileText, Trash2, Clock, Wand2, Sparkles, Pencil,
-  Eye, Lock, X, Loader2,
+  Eye, Lock, X, Loader2, Download,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { GlassPanel } from "@applyflow/ui";
@@ -195,6 +195,23 @@ export function ResumeList() {
     }
   }
 
+  async function handleDownload(resume: ResumeData) {
+    try {
+      const { pdf_bytes } = await api.resumes.getPdfBytes(resume.id);
+      if (!pdf_bytes) return;
+      const binary = atob(pdf_bytes);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${resume.name.replace(/[^a-zA-Z0-9-_ ]/g, "")}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch { /* silent */ }
+  }
+
   async function handleEdit(resume: ResumeData) {
     if (!canEditResume(resume)) return;
     setLoadingId(resume.id);
@@ -260,9 +277,39 @@ export function ResumeList() {
                     isViewLoading={viewLoadingId === resume.id}
                     appStatus={null}
                     canEdit={false}
+                    isGeneral={false}
                     onUse={() => void handleUse(resume)}
                     onEdit={() => void handleEdit(resume)}
                     onView={() => void handleView(resume)}
+                    onDelete={() => deleteMutation.mutate(resume.id)}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* General resumes — between Base and Tailored */}
+            {generalResumes.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-label-sm font-semibold text-on-surface-variant/60 uppercase tracking-wider">
+                  General Resumes
+                </p>
+                <p className="text-[11px] text-on-surface-variant/40 -mt-1">
+                  AI-tailored but not linked to a specific job
+                </p>
+                {generalResumes.map((resume) => (
+                  <ResumeRow
+                    key={resume.id}
+                    resume={resume}
+                    isSelected={false}
+                    isLoading={loadingId === resume.id}
+                    isViewLoading={viewLoadingId === resume.id}
+                    appStatus={null}
+                    canEdit={true}
+                    isGeneral={true}
+                    onUse={() => {}}
+                    onEdit={() => void handleEdit(resume)}
+                    onView={() => void handleView(resume)}
+                    onDownload={() => void handleDownload(resume)}
                     onDelete={() => deleteMutation.mutate(resume.id)}
                   />
                 ))}
@@ -284,36 +331,11 @@ export function ResumeList() {
                     isViewLoading={viewLoadingId === resume.id}
                     appStatus={getAppStatus(resume)}
                     canEdit={canEditResume(resume)}
+                    isGeneral={false}
                     onUse={() => {}}
                     onEdit={() => void handleEdit(resume)}
                     onView={() => void handleView(resume)}
-                    onDelete={() => deleteMutation.mutate(resume.id)}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* General resumes — tailored without a specific job link */}
-            {generalResumes.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-label-sm font-semibold text-on-surface-variant/60 uppercase tracking-wider">
-                  General Resumes
-                </p>
-                <p className="text-[11px] text-on-surface-variant/40 -mt-1">
-                  AI-tailored but not linked to a specific job application
-                </p>
-                {generalResumes.map((resume) => (
-                  <ResumeRow
-                    key={resume.id}
-                    resume={resume}
-                    isSelected={false}
-                    isLoading={loadingId === resume.id}
-                    isViewLoading={viewLoadingId === resume.id}
-                    appStatus={null}
-                    canEdit={true}
-                    onUse={() => {}}
-                    onEdit={() => void handleEdit(resume)}
-                    onView={() => void handleView(resume)}
+                    onDownload={() => {}}
                     onDelete={() => deleteMutation.mutate(resume.id)}
                   />
                 ))}
@@ -339,16 +361,18 @@ interface ResumeRowProps {
   isViewLoading: boolean;
   appStatus: string | null;
   canEdit: boolean;
+  isGeneral?: boolean;
   onUse: () => void;
   onEdit: () => void;
   onView: () => void;
+  onDownload?: () => void;
   onDelete: () => void;
 }
 
 function ResumeRow({
   resume, isSelected, isLoading, isViewLoading,
-  appStatus, canEdit,
-  onUse, onEdit, onView, onDelete,
+  appStatus, canEdit, isGeneral = false,
+  onUse, onEdit, onView, onDownload, onDelete,
 }: ResumeRowProps) {
   const isTailored = resume.type === "tailored";
   const isLocked = isTailored && !!appStatus && LOCKED_STATUSES.has(appStatus);
@@ -412,6 +436,17 @@ function ResumeRow({
         >
           {isViewLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
         </button>
+
+        {/* Download button — General Resumes only */}
+        {isGeneral && onDownload && (
+          <button
+            onClick={onDownload}
+            title="Download PDF"
+            className="h-8 w-8 rounded-lg border border-white/10 flex items-center justify-center text-on-surface-variant/50 hover:text-green-400 hover:border-green-500/30 hover:bg-green-500/8 transition-colors"
+          >
+            <Download className="h-3.5 w-3.5" />
+          </button>
+        )}
 
         {/* Primary action */}
         {isTailored ? (

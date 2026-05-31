@@ -178,7 +178,7 @@ export function ResumeUploader() {
   const {
     selectedContent, selectedFilename, selectedResumeId,
     prefillJd, prefillCompany, prefillRole,
-    setSelectedResume, setTailoredContent, setActiveApplication, clear,
+    setSelectedResume, setTailoredContent, setTailoringInProgress, setActiveApplication, clear,
   } = useResumeLabStore();
 
   const [isDragging, setIsDragging] = useState(false);
@@ -251,6 +251,7 @@ export function ResumeUploader() {
     setStreamPreview("");
     setTailoredContent(null);
     setIsTailoring(true);
+    setTailoringInProgress(true); // immediately switches to editor with loading state
     try {
       let result = "";
       // Prefer resume_id (DB lookup) over raw text when available
@@ -272,6 +273,7 @@ export function ResumeUploader() {
       }
     } catch {
       setStreamPreview("Error: could not connect to AI backend.");
+      setTailoringInProgress(false); // go back to uploader on error
     } finally {
       setIsTailoring(false);
     }

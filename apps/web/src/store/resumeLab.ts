@@ -29,7 +29,7 @@ export interface TailoredContent {
   keywords_added: string[];
   ats_score: number;           // score after tailoring
   ats_score_before?: number;   // original score before tailoring (new)
-  keyword_stuffing_flags?: string[]; // phrases Claude flagged as forced (new)
+  keyword_stuffing_flags?: string[]; // phrases ApplyFlow AI flagged as forced (new)
   // Section display name overrides (e.g. experience → "Work History")
   sectionNames?: Record<string, string>;
   // AI-generated extra sections (Certifications, Projects, Languages, etc.)
@@ -76,6 +76,7 @@ interface ResumeLabState {
   accentColor: string;
   fontStyle: FontStyle;
   tailoredContent: TailoredContent | null;
+  tailoringInProgress: boolean;   // true while AI is streaming → shows editor with loading state immediately
   draftContent: TailoredContent | null;
   editorPrefs: EditorPrefs;
   activeApplicationId: string;
@@ -86,6 +87,7 @@ interface ResumeLabState {
   setAccentColor: (color: string) => void;
   setFontStyle: (font: FontStyle) => void;
   setTailoredContent: (content: TailoredContent | null) => void;
+  setTailoringInProgress: (v: boolean) => void;
   setDraftContent: (content: TailoredContent | null) => void;
   setEditorPrefs: (prefs: Partial<EditorPrefs>) => void;
   setActiveApplication: (id: string) => void;
@@ -107,6 +109,7 @@ export const useResumeLabStore = create<ResumeLabState>()(
       accentColor: "#2563eb",
       fontStyle: "sans",
       tailoredContent: null,
+      tailoringInProgress: false,
       draftContent: null,
       editorPrefs: { ...DEFAULT_EDITOR_PREFS },
       activeApplicationId: "",
@@ -119,10 +122,9 @@ export const useResumeLabStore = create<ResumeLabState>()(
       setAccentColor: (color) => set({ accentColor: color }),
       setFontStyle: (font) => set({ fontStyle: font }),
       setTailoredContent: (content) => set(content !== null
-        // New AI result — reset draft + editor prefs so editor starts fresh
-        ? { tailoredContent: content, draftContent: null, editorPrefs: { ...DEFAULT_EDITOR_PREFS } }
-        // null = Back button — keep prefs so returning restores the session
-        : { tailoredContent: null }),
+        ? { tailoredContent: content, tailoringInProgress: false, draftContent: null, editorPrefs: { ...DEFAULT_EDITOR_PREFS } }
+        : { tailoredContent: null, tailoringInProgress: false }),
+      setTailoringInProgress: (v) => set({ tailoringInProgress: v }),
       setDraftContent: (content) => set({ draftContent: content }),
       setEditorPrefs: (prefs) =>
         set(state => ({ editorPrefs: { ...state.editorPrefs, ...prefs } })),
@@ -141,7 +143,7 @@ export const useResumeLabStore = create<ResumeLabState>()(
       clear: () => set({
         selectedResumeId: "", selectedContent: "", selectedFilename: "",
         prefillJd: "", prefillCompany: "", prefillRole: "",
-        tailoredContent: null, draftContent: null,
+        tailoredContent: null, tailoringInProgress: false, draftContent: null,
         editorPrefs: { ...DEFAULT_EDITOR_PREFS },
         activeApplicationId: "", savedResumeId: "",
       }),
