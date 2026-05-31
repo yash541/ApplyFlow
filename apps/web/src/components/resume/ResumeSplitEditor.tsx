@@ -327,13 +327,19 @@ function EditableBullet({ value, onChange, role }: {
         onCancel={() => setOpen(false)}
       />
       <div
-        onClick={() => setOpen(true)}
-        className={`flex items-start gap-2 group/bullet cursor-text rounded-lg px-2 py-1.5 border transition-all
-          ${isLong ? "border-amber-500/20 bg-amber-500/5 hover:bg-amber-500/10" : "border-transparent hover:bg-white/5 hover:border-white/8"}`}
+        className={`flex items-start gap-2 group/bullet rounded-lg px-2 py-1.5 border transition-all
+          ${isLong ? "border-amber-500/20 bg-amber-500/5" : "border-white/6 bg-white/[0.02] hover:bg-white/5 hover:border-white/10"}`}
       >
         <span className="text-primary/60 mt-0.5 shrink-0 text-sm">•</span>
-        <span className="flex-1 text-sm text-on-surface-variant leading-relaxed">{value}</span>
-        <Pencil className="h-3 w-3 mt-1 shrink-0 text-on-surface-variant/50 group-hover/bullet:text-primary transition-all" />
+        <span className="flex-1 text-sm text-on-surface-variant leading-relaxed cursor-text" onClick={() => setOpen(true)}>{value}</span>
+        {/* Always-visible edit button with background */}
+        <button
+          onClick={e => { e.stopPropagation(); setOpen(true); }}
+          className="mt-0.5 shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/8 border border-white/12 text-white/60 hover:bg-primary/20 hover:text-primary hover:border-primary/30 transition-all text-[10px] font-medium"
+          title="Edit bullet"
+        >
+          <Pencil className="h-2.5 w-2.5" /> Edit
+        </button>
       </div>
     </>
   );
@@ -1201,19 +1207,20 @@ export function ResumeSplitEditor() {
                     className="text-xs text-on-surface-variant/60" />
                   <div className="mt-1 rounded-lg border border-white/5 overflow-hidden">
                     {exp.bullets.map((b, j) => (
-                      <div key={j} className="group/brow flex items-start">
+                      <div key={j} className="flex items-start gap-1">
                         <div className="flex-1 min-w-0">
                           <EditableBullet value={b} onChange={v => updateBullet(i, j, v)} role={`${exp.title} at ${exp.company}`} />
                         </div>
                         <button onClick={() => deleteExpBullet(i, j)}
-                          className="mt-2 mr-1.5 opacity-70 group-hover/brow:opacity-100 text-on-surface-variant/60 hover:text-red-400 transition-all shrink-0">
-                          <X className="h-3 w-3" />
+                          className="mt-1.5 mr-0.5 shrink-0 h-5 w-5 flex items-center justify-center rounded bg-white/8 border border-white/12 text-white/50 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/30 transition-all"
+                          title="Delete bullet">
+                          <X className="h-2.5 w-2.5" />
                         </button>
                       </div>
                     ))}
                   </div>
                   <button onClick={() => addExpBullet(i)}
-                    className="text-[10px] text-on-surface-variant/60 hover:text-on-surface-variant/90 flex items-center gap-1 transition-colors">
+                    className="text-[10px] text-white/55 hover:text-white/90 flex items-center gap-1 transition-colors px-1 py-0.5 rounded hover:bg-white/5">
                     <Plus className="h-2.5 w-2.5" /> Add bullet
                   </button>
                 </div>
