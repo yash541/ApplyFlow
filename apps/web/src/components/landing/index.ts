@@ -1,0 +1,9 @@
+export { Navbar } from "./Navbar";
+export { HeroSection } from "./HeroSection";
+export { SocialProofBar } from "./SocialProofBar";
+export { FeaturesSection } from "./FeaturesSection";
+export { HowItWorks } from "./HowItWorks";
+export { FeatureGrid } from "./FeatureGrid";
+export { InstallSection } from "./InstallSection";
+export { FinalCTA } from "./FinalCTA";
+export { Footer } from "./Footer";

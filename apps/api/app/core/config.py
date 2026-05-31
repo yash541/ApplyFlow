@@ -8,7 +8,20 @@ class Settings(BaseSettings):
     APP_NAME: str = "ApplyFlow API"
     API_V1_PREFIX: str = "/api/v1"
     DEBUG: bool = False
-    CORS_ORIGINS: list[str] = ["http://localhost:3000"]
+
+    # Web app origin — used for CORS and any server-side redirects
+    WEB_APP_URL: str = "http://localhost:3000"
+
+    # CORS — comma-separated list of allowed origins, or parsed from WEB_APP_URL
+    # In production set CORS_ORIGINS="https://app.yourdomain.com,https://yourdomain.com"
+    CORS_ORIGINS: list[str] = []
+
+    @property
+    def allowed_origins(self) -> list[str]:
+        """Merge CORS_ORIGINS list with WEB_APP_URL so you never forget to add it."""
+        origins = set(self.CORS_ORIGINS)
+        origins.add(self.WEB_APP_URL)
+        return list(origins)
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/applyflow"
@@ -24,6 +37,7 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
     DEFAULT_AI_MODEL: str = "claude-sonnet-4-6"
+    FAST_AI_MODEL: str = "claude-haiku-4-5-20251001"
 
 
 settings = Settings()
