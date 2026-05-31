@@ -279,7 +279,7 @@ function EditableField({
       className={`cursor-text group/field inline-flex items-center gap-1 hover:text-on-surface transition-colors ${className} ${!value ? "italic opacity-40" : ""}`}
     >
       {value || placeholder}
-      <Pencil className="h-2.5 w-2.5 opacity-30 group-hover/field:opacity-70 transition-opacity shrink-0" />
+      <Pencil className="h-2.5 w-2.5 opacity-60 group-hover/field:opacity-100 transition-opacity shrink-0" />
     </span>
   );
 }
@@ -333,7 +333,7 @@ function EditableBullet({ value, onChange, role }: {
       >
         <span className="text-primary/60 mt-0.5 shrink-0 text-sm">•</span>
         <span className="flex-1 text-sm text-on-surface-variant leading-relaxed">{value}</span>
-        <Pencil className="h-3 w-3 mt-1 shrink-0 text-on-surface-variant/25 group-hover/bullet:text-primary/70 transition-all" />
+        <Pencil className="h-3 w-3 mt-1 shrink-0 text-on-surface-variant/50 group-hover/bullet:text-primary transition-all" />
       </div>
     </>
   );
@@ -410,7 +410,7 @@ function SortableSectionRow({
           onClick={() => setEditingName(true)}
         >
           <span className="truncate">{label}</span>
-          <Pencil className="h-2.5 w-2.5 opacity-0 group-hover/lbl:opacity-40 transition-opacity shrink-0" />
+          <Pencil className="h-2.5 w-2.5 opacity-50 group-hover/lbl:opacity-90 transition-opacity shrink-0" />
         </span>
       )}
 
@@ -432,7 +432,7 @@ function SortableSectionRow({
           {visible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
         </button>
         {isCustom && (
-          <button onClick={onDelete} className="text-on-surface-variant/20 hover:text-red-400 transition-colors">
+          <button onClick={onDelete} className="text-on-surface-variant/55 hover:text-red-400 transition-colors">
             <Trash2 className="h-3 w-3" />
           </button>
         )}
@@ -1192,7 +1192,7 @@ export function ResumeSplitEditor() {
                       <EditableField value={exp.duration} onSave={v => updateExpField(i, "duration", v)}
                         className="text-xs text-on-surface-variant/50" />
                       <button onClick={() => deleteExperience(i)}
-                        className="text-on-surface-variant/40 hover:text-red-400 transition-colors">
+                        className="text-on-surface-variant/60 hover:text-red-400 transition-colors">
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </div>
@@ -1206,14 +1206,14 @@ export function ResumeSplitEditor() {
                           <EditableBullet value={b} onChange={v => updateBullet(i, j, v)} role={`${exp.title} at ${exp.company}`} />
                         </div>
                         <button onClick={() => deleteExpBullet(i, j)}
-                          className="mt-2 mr-1.5 opacity-40 group-hover/brow:opacity-100 text-on-surface-variant/40 hover:text-red-400 transition-all shrink-0">
+                          className="mt-2 mr-1.5 opacity-70 group-hover/brow:opacity-100 text-on-surface-variant/60 hover:text-red-400 transition-all shrink-0">
                           <X className="h-3 w-3" />
                         </button>
                       </div>
                     ))}
                   </div>
                   <button onClick={() => addExpBullet(i)}
-                    className="text-[10px] text-on-surface-variant/30 hover:text-on-surface-variant/60 flex items-center gap-1 transition-colors">
+                    className="text-[10px] text-on-surface-variant/60 hover:text-on-surface-variant/90 flex items-center gap-1 transition-colors">
                     <Plus className="h-2.5 w-2.5" /> Add bullet
                   </button>
                 </div>
@@ -1246,7 +1246,7 @@ export function ResumeSplitEditor() {
                       <EditableField value={edu.year} onSave={v => updateEdu(i, "year", v)}
                         className="text-xs text-on-surface-variant/50" />
                       <button onClick={() => deleteEducation(i)}
-                        className="text-on-surface-variant/20 hover:text-red-400 transition-colors">
+                        className="text-on-surface-variant/55 hover:text-red-400 transition-colors">
                         <X className="h-3 w-3" />
                       </button>
                     </div>
@@ -1290,7 +1290,7 @@ export function ResumeSplitEditor() {
                             className="flex-1 text-[11px] font-semibold text-on-surface-variant/70"
                           />
                           <button onClick={() => removeSkillGroup(gi)}
-                            className="text-on-surface-variant/20 hover:text-red-400 transition-colors shrink-0">
+                            className="text-on-surface-variant/55 hover:text-red-400 transition-colors shrink-0">
                             <Trash2 className="h-3 w-3" />
                           </button>
                         </div>
@@ -1414,7 +1414,7 @@ export function ResumeSplitEditor() {
                           />
                           <button
                             onClick={() => deleteCustomSectionItem(section.id, itemIdx)}
-                            className="text-on-surface-variant/20 hover:text-red-400 transition-colors">
+                            className="text-on-surface-variant/55 hover:text-red-400 transition-colors">
                             <X className="h-3 w-3" />
                           </button>
                         </div>
@@ -1439,7 +1439,7 @@ export function ResumeSplitEditor() {
 
                       <button
                         onClick={() => addCustomBullet(section.id, itemIdx)}
-                        className="text-[10px] text-on-surface-variant/30 hover:text-on-surface-variant/60 flex items-center gap-1 transition-colors">
+                        className="text-[10px] text-on-surface-variant/60 hover:text-on-surface-variant/90 flex items-center gap-1 transition-colors">
                         <Plus className="h-2.5 w-2.5" /> Add bullet
                       </button>
                     </div>
