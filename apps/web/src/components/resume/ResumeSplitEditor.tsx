@@ -512,6 +512,7 @@ export function ResumeSplitEditor() {
   }
 
   const latestBlobRef = useRef<Blob | null>(null);
+  const [blobReady, setBlobReady] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [zoom, setZoom] = useState(1.0);
   // Name for general (unlinked) resumes — shown as editable input in toolbar
@@ -954,7 +955,7 @@ export function ResumeSplitEditor() {
             {/* Download button — always visible once PDF is ready */}
             <button
               onClick={handleDownload}
-              disabled={!latestBlobRef.current}
+              disabled={!blobReady}
               title="Download PDF"
               className="h-8 px-3 rounded-lg border border-white/15 text-xs font-medium flex items-center gap-1.5 text-white/60 hover:text-white hover:bg-white/8 hover:border-white/25 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
             >
@@ -1017,7 +1018,7 @@ export function ResumeSplitEditor() {
                 templateId={selectedTemplate} accentColor={accentColor} fontStyle={fontStyle}
                 compact={compact} layout={layout} sectionOrder={visibleOrder}
                 columnMap={selectedTemplate === "modern" ? columnMap : undefined}
-                content={content} onBlobReady={(blob) => { latestBlobRef.current = blob; }}
+                content={content} onBlobReady={(blob) => { latestBlobRef.current = blob; setBlobReady(true); }}
               />
             </div>
           )}
@@ -1034,7 +1035,7 @@ export function ResumeSplitEditor() {
                   templateId={selectedTemplate} accentColor={accentColor} fontStyle={fontStyle}
                   compact={compact} layout={layout} sectionOrder={visibleOrder}
                   columnMap={selectedTemplate === "modern" ? columnMap : undefined}
-                  content={content} onBlobReady={(blob) => { latestBlobRef.current = blob; }}
+                  content={content} onBlobReady={(blob) => { latestBlobRef.current = blob; setBlobReady(true); }}
                 />
               </div>
             </div>
