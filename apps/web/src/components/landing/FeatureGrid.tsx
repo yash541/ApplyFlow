@@ -37,7 +37,7 @@ const ALL_FEATURES = [
   {
     icon: "🔍",
     title: "Multi-Provider Search",
-    desc: "Search JSearch, Adzuna, and Apify simultaneously. Results stream in as each source responds.",
+    desc: "Search JSearch, Adzuna, and Apify simultaneously using your own API keys — free forever. Results stream in as each source responds.",
   },
   {
     icon: "🔔",

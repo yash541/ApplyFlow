@@ -11,6 +11,7 @@ const FREE_FEATURES = [
   { label: "Applications Kanban board", note: "Unlimited" },
   { label: "Submission auto-detection", note: "" },
   { label: "Real-time notifications", note: "" },
+  { label: "Job search", note: "JSearch + Adzuna + Apify" },
   { label: "1 base resume upload", note: "" },
   { label: "1 resume download", note: "lifetime total" },
 ];
@@ -25,7 +26,6 @@ const PRO_FEATURES = [
   { label: "AI field regeneration (↺)", note: "" },
   { label: "Profile AI rewrite", note: "Summary + bullets" },
   { label: "Save-to-profile learning", note: "" },
-  { label: "Job search", note: "JSearch + Adzuna + Apify" },
   { label: "Cross-portal session continuity", note: "" },
   { label: "Resume Lab zoom", note: "" },
   { label: "ATS score on resume", note: "" },
