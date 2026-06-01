@@ -14,7 +14,7 @@ export function ExecutiveTemplate({ content, accentColor, fontStyle, compact, la
     ? "20pt 32pt 14pt 32pt"
     : `${Math.round(28 * m)}pt ${Math.round(40 * m)}pt ${Math.round(20 * m)}pt ${Math.round(40 * m)}pt`;
   const bodyPad = compact
-    ? "16pt 32pt 32pt 32pt"
+    ? "16pt 32pt 12pt 32pt"   // reduce bottom from 32→12 in compact to avoid blank page 2
     : `${Math.round(22 * m)}pt ${Math.round(40 * m)}pt ${Math.round(40 * m)}pt ${Math.round(40 * m)}pt`;
 
   const bodyOrder = sectionOrder.filter(id => id === "summary" || id === "experience" || id.startsWith("custom_"));
