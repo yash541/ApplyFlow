@@ -63,7 +63,7 @@ export function ATSSafeTemplate({ content, accentColor, fontStyle, compact, layo
       const groups = content.skillGroups ?? autoGroupSkills(content.skills);
       const labelColWidth = compact ? 82 : 96;
       return (
-        <View key="skills">
+        <View key="skills" style={{ marginBottom: c.secGap }}>
           <Text style={{ ...headerStyle, marginBottom: c.headerGap }}>{getSectionLabel("skills", content)}</Text>
           {groups.map((grp, gi) => (
             <View key={gi} style={{ flexDirection: "row", marginBottom: compact ? 2.5 : 3.5 }}>

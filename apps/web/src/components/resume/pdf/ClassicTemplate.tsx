@@ -58,7 +58,7 @@ export function ClassicTemplate({ content, accentColor, fontStyle, compact, layo
       </View>
     ),
     skills: flattenSkills(content).length > 0 && (
-      <View key="skills">
+      <View key="skills" style={{ marginBottom: c.secGap }}>
         <View style={headerBorder}>
           <Text style={{ ...headerStyle, marginBottom: 3 }}>{getSectionLabel("skills", content)}</Text>
         </View>

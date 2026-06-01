@@ -56,7 +56,7 @@ export function MinimalTemplate({ content, accentColor, fontStyle, compact, layo
       </View>
     ),
     skills: flattenSkills(content).length > 0 && (
-      <View key="skills">
+      <View key="skills" style={{ marginBottom: c.secGap }}>
         <Text style={{ ...headerStyle, marginBottom: headerGap }}>{getSectionLabel("skills", content)}</Text>
         <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
           {flattenSkills(content).map((skill, i) => (

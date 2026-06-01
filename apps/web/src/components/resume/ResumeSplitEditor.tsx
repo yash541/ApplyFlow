@@ -1132,6 +1132,15 @@ export function ResumeSplitEditor() {
             </button>
             {showLayoutControls && (
               <div className="mt-3 space-y-3.5">
+                {compact && (
+                  <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                    <span className="text-amber-400 text-xs">⚠</span>
+                    <p className="text-[10px] text-amber-300/80 leading-snug">
+                      Layout controls are disabled in Compact mode. Click <strong>Compact on</strong> in the toolbar to re-enable them.
+                    </p>
+                  </div>
+                )}
+                <div className={compact ? "opacity-40 pointer-events-none" : ""}>
                 <LayoutSlider label="Spacing" value={layout.spacing} min={0.7} max={2.5} step={0.05}
                   format={v => `${v.toFixed(2)}×`} onChange={v => setLayout(prev => ({ ...prev, spacing: v }))} />
                 <LayoutSlider label="Margins" value={layout.margins} min={0.6} max={1.4} step={0.05}
@@ -1146,6 +1155,7 @@ export function ResumeSplitEditor() {
                   className="text-[10px] text-on-surface-variant/30 hover:text-on-surface-variant/60 transition-colors">
                   Reset to auto
                 </button>
+                </div>
               </div>
             )}
           </div>
