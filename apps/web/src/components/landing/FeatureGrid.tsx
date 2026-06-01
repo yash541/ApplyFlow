@@ -20,9 +20,14 @@ const ALL_FEATURES = [
     desc: "One click rewrites resume bullets to mirror job description keywords. ATS-optimized without fabrication.",
   },
   {
+    icon: "🗂️",
+    title: "General Resumes",
+    desc: "Tailor a resume for any role type — not just a specific job. Saved in your library under General Resumes, ready to download anytime.",
+  },
+  {
     icon: "⬇️",
-    title: "Resume Download",
-    desc: "Download your AI-tailored resume as a polished PDF directly from the editor. One free download included.",
+    title: "PDF Download",
+    desc: "Download any tailored resume as a polished PDF directly from the editor. One free download included — unlimited on Pro.",
   },
   {
     icon: "📊",

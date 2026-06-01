@@ -12,14 +12,15 @@ const FREE_FEATURES = [
   { label: "Submission auto-detection", note: "" },
   { label: "Real-time notifications", note: "" },
   { label: "1 base resume upload", note: "" },
-  { label: "1 resume download (lifetime)", note: "" },
+  { label: "1 resume download", note: "lifetime total" },
 ];
 
 const PRO_FEATURES = [
   { label: "Everything in Free", note: "" },
   { label: "Unlimited AI autofills", note: "" },
   { label: "Unlimited job match scoring", note: "" },
-  { label: "AI resume tailoring", note: "Linked + General" },
+  { label: "AI resume tailoring", note: "Job-linked + General" },
+  { label: "General Resumes library", note: "Save by role type, download anytime" },
   { label: "Unlimited resume downloads", note: "" },
   { label: "AI field regeneration (↺)", note: "" },
   { label: "Profile AI rewrite", note: "Summary + bullets" },
