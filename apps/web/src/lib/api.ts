@@ -32,6 +32,18 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   return res.json() as Promise<T>;
 }
 
+// ── Billing types ─────────────────────────────────────────────────────────────
+
+export interface UsageData {
+  plan: "free" | "pro";
+  autofill_used: number;
+  autofill_limit: number | null;  // null = unlimited (pro)
+  score_used: number;
+  score_limit: number | null;
+  downloads_used: number;
+  downloads_limit: number | null;
+}
+
 // ── Shared types ─────────────────────────────────────────────────────────────
 
 export interface WorkEntry {
@@ -225,6 +237,24 @@ export const api = {
 
     delete: (id: string) =>
       request<{ deleted: string }>(`/api/v1/applications/${id}`, { method: "DELETE" }),
+  },
+
+  billing: {
+    getUsage: () =>
+      request<UsageData>("/api/v1/billing/usage"),
+
+    createCheckout: (priceId: string) =>
+      request<{ url: string }>("/api/v1/billing/checkout", {
+        method: "POST",
+        body: {
+          price_id: priceId,
+          success_url: `${typeof window !== "undefined" ? window.location.origin : (process.env.NEXT_PUBLIC_WEB_URL ?? "http://localhost:3000")}/dashboard?upgraded=true`,
+          cancel_url: `${typeof window !== "undefined" ? window.location.origin : (process.env.NEXT_PUBLIC_WEB_URL ?? "http://localhost:3000")}/dashboard`,
+        },
+      }),
+
+    createPortal: () =>
+      request<{ url: string }>("/api/v1/billing/portal", { method: "POST" }),
   },
 
   jobs: {

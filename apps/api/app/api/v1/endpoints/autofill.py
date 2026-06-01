@@ -12,6 +12,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.usage import check_and_increment_usage
 from app.models import User, UserProfile, Resume, Application
 
 router = APIRouter()
@@ -637,6 +638,10 @@ async def smart_match(
     One Claude call per field, all fired in parallel.
     Total latency ≈ slowest single field, not the sum.
     """
+    # Gate: check + increment usage for free users
+    await check_and_increment_usage(current_user, db, "autofill_sessions")
+    await db.commit()
+
     # Load user profile
     result = await db.execute(
         select(UserProfile).where(UserProfile.user_id == current_user.id)
@@ -761,12 +766,16 @@ async def smart_match_stream(
 
     Total perceived latency = time for first answer to appear, not time for all answers.
     """
+    # Gate: check + increment usage for free users
+    await check_and_increment_usage(current_user, db, "autofill_sessions")
+    await db.commit()
+
     result = await db.execute(select(UserProfile).where(UserProfile.user_id == current_user.id))
     profile_row = result.scalar_one_or_none()
     profile = _prepare_profile(current_user, profile_row.data or {} if profile_row else {})
 
     # Haiku — 5× faster than Sonnet for short answers, more than capable for form filling
-    haiku = "claude-haiku-4-5-20251001"
+    haiku = settings.FAST_AI_MODEL
     client = (
         anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
         if settings.ANTHROPIC_API_KEY else None

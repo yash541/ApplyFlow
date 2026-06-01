@@ -11,6 +11,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type ResumeData } from "@/lib/api";
 import { useResumeLabStore, type TailoredContent } from "@/store/resumeLab";
 import { DEFAULT_SECTION_ORDER } from "./pdf/shared";
+import { UpgradeModal } from "@/components/shared/UpgradeModal";
+import { useUpgradePrompt } from "@/hooks/useUpgradePrompt";
 
 // react-pdf is browser-only — load without SSR
 const PdfViewer = dynamic(
@@ -125,6 +127,7 @@ function ResumeViewerModal({ payload, onClose }: { payload: ViewPayload; onClose
 export function ResumeList() {
   const queryClient = useQueryClient();
   const { selectedResumeId, setSelectedResume, openResume } = useResumeLabStore();
+  const { showUpgrade, upgradeReason, openUpgrade, closeUpgrade } = useUpgradePrompt();
 
   const [viewPayload, setViewPayload] = useState<ViewPayload | null>(null);
   const [viewLoadingId, setViewLoadingId] = useState<string | null>(null);
@@ -197,6 +200,8 @@ export function ResumeList() {
 
   async function handleDownload(resume: ResumeData) {
     try {
+      // Check download limit — the backend gates and increments total_downloads
+      // by returning 402 if exceeded; we surface that as an upgrade prompt.
       const { pdf_bytes } = await api.resumes.getPdfBytes(resume.id);
       if (!pdf_bytes) return;
       const binary = atob(pdf_bytes);
@@ -209,7 +214,12 @@ export function ResumeList() {
       a.download = `${resume.name.replace(/[^a-zA-Z0-9-_ ]/g, "")}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch { /* silent */ }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("download_limit_exceeded") || msg.includes("402")) {
+        openUpgrade("You've used your free resume download. Upgrade to Pro for unlimited downloads.");
+      }
+    }
   }
 
   async function handleEdit(resume: ResumeData) {
@@ -247,8 +257,14 @@ export function ResumeList() {
     );
   }
 
+  /* Upgrade modal (triggered on download limit hit) */
+  const upgradeModal = (
+    <UpgradeModal open={showUpgrade} onClose={closeUpgrade} reason={upgradeReason} />
+  );
+
   return (
     <>
+      {upgradeModal}
       <GlassPanel variant="card" className="p-5 space-y-6">
         <h2 className="text-title-md font-display font-semibold text-on-surface">Your Resumes</h2>
 

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -18,10 +18,17 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+    # Billing / plan
+    plan: Mapped[str] = mapped_column(String(20), nullable=False, default="free")
+    stripe_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    stripe_subscription_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    total_downloads: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
     resumes: Mapped[list["Resume"]] = relationship("Resume", back_populates="user", cascade="all, delete-orphan")
     applications: Mapped[list["Application"]] = relationship("Application", back_populates="user", cascade="all, delete-orphan")
     profile: Mapped["UserProfile | None"] = relationship("UserProfile", back_populates="user", cascade="all, delete-orphan", uselist=False)
     notifications: Mapped[list["Notification"]] = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
+    usage: Mapped[list["UserUsage"]] = relationship("UserUsage", back_populates="user", cascade="all, delete-orphan")
 
 
 class UserProfile(Base):
@@ -165,3 +172,19 @@ class Notification(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped["User"] = relationship("User", back_populates="notifications")
+
+
+class UserUsage(Base):
+    """Monthly usage counters per user. One row per (user_id, month)."""
+    __tablename__ = "user_usage"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    # Format: "2026-06" — current calendar month
+    month: Mapped[str] = mapped_column(String(7), nullable=False, index=True)
+    autofill_sessions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    match_scores: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    __table_args__ = (UniqueConstraint("user_id", "month", name="uq_user_usage_user_month"),)
+
+    user: Mapped["User"] = relationship("User", back_populates="usage")

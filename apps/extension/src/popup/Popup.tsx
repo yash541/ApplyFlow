@@ -1,9 +1,11 @@
 import React, { useEffect, useState, useCallback } from "react";
 import type { AuthSession, AppNotification } from "@applyflow/shared";
 
-const API      = "http://localhost:8000/api/v1/auth";
-const API_BASE = "http://localhost:8000/api/v1";
-const WEB_BASE = "http://localhost:3000";
+const _API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
+const _WEB_BASE = import.meta.env.VITE_WEB_BASE ?? "http://localhost:3000";
+const API       = `${_API_BASE}/api/v1/auth`;
+const API_BASE  = `${_API_BASE}/api/v1`;
+const WEB_BASE  = _WEB_BASE;
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -50,7 +52,7 @@ export default function Popup() {
 
 function AuthView({ onLogin: _onLogin }: { onLogin: (s: AuthSession) => void }) {
   const { enabled, toggle } = useEnabled();
-  function openLogin() { chrome.tabs.create({ url: "http://localhost:3000/login" }); }
+  function openLogin() { chrome.tabs.create({ url: `${WEB_BASE}/login` }); }
 
   return (
     <div style={{

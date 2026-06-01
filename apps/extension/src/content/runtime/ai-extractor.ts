@@ -1,13 +1,13 @@
 import type { LinkedInJobData, ExtensionMessage } from "@applyflow/shared";
 
-const MAX_TEXT_LENGTH = 8000; // characters sent to Claude — matches server-side cap
+const MAX_TEXT_LENGTH = 8000; // characters sent to ApplyFlow AI — matches server-side cap
 
 /**
- * Last-resort extraction using Claude when all DOM scrape attempts fail.
+ * Last-resort extraction using ApplyFlow AI when all DOM scrape attempts fail.
  *
  * Grabs the page's innerText (truncated), routes it through the background
  * service worker to POST /api/v1/ai/extract-job, and returns a LinkedInJobData
- * if Claude is confident enough (>= 0.5). Returns null on any failure.
+ * if ApplyFlow AI is confident enough (>= 0.5). Returns null on any failure.
  */
 export async function aiExtractJobData(
   portal: string,

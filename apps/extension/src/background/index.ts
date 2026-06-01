@@ -1,7 +1,7 @@
 import type { ExtensionMessage, LinkedInJobData, AppNotification } from "@applyflow/shared";
 
-const API_BASE = "http://localhost:8000";
-const WEB_BASE = "http://localhost:3000";
+const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
+const WEB_BASE = import.meta.env.VITE_WEB_BASE ?? "http://localhost:3000";
 const APPLY_SESSION_KEY = "af_apply_session";
 const ALL_URLS_ORIGIN = "<all_urls>";
 
@@ -416,7 +416,7 @@ function getPackagedAutofillScript(): string | null {
     const manifest = chrome.runtime.getManifest();
     const contentScripts = manifest.content_scripts ?? [];
     const autofill = contentScripts.find((script) =>
-      script.matches?.includes("http://localhost:3000/demo-apply*"),
+      script.matches?.includes(`${WEB_BASE}/demo-apply*`),
     );
     return autofill?.js?.[0] ?? null;
   } catch {

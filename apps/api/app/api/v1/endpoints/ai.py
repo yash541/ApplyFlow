@@ -11,6 +11,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.usage import check_and_increment_usage
 from app.models import User, Resume, Application, UserProfile
 
 router = APIRouter()
@@ -84,6 +85,10 @@ async def match_job(
       Claude infers likely requirements from the job title + company name alone.
       Score is marked score_basis="title_only" so the UI can show it as estimated (~68).
     """
+    # Gate: check + increment usage for free users
+    await check_and_increment_usage(current_user, db, "match_scores")
+    await db.commit()
+
     if not settings.ANTHROPIC_API_KEY:
         return MatchResponse(
             overall_score=70, skill_match=70, experience_match=70,
@@ -170,7 +175,7 @@ Return ONLY valid JSON:
     try:
         client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
         msg = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=settings.FAST_AI_MODEL,
             max_tokens=400,
             messages=[{"role": "user", "content": prompt}],
         )

@@ -39,5 +39,11 @@ class Settings(BaseSettings):
     DEFAULT_AI_MODEL: str = "claude-sonnet-4-6"
     FAST_AI_MODEL: str = "claude-haiku-4-5-20251001"
 
+    # Stripe
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = "whsec_placeholder"
+    STRIPE_MONTHLY_PRICE_ID: str = ""
+    STRIPE_ANNUAL_PRICE_ID: str = ""
+
 
 settings = Settings()

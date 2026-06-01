@@ -29,7 +29,7 @@ interface ApifyActorState {
   schemaError?: string;
   showSchema?: boolean;
   pendingMapping?: Record<string, string | null>;
-  // Phase 3: Claude output mapping
+  // Phase 3: ApplyFlow AI output mapping
   output_mapping?: Record<string, string | null>;
   mappingWithAI?: boolean;
   mappingResult?: Record<string, string | null>;

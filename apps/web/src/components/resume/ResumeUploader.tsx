@@ -7,6 +7,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { api, streamTailor, type ApplicationData } from "@/lib/api";
 import { useResumeLabStore, type TailoredContent } from "@/store/resumeLab";
 import { createPortal } from "react-dom";
+import { UpgradeModal } from "@/components/shared/UpgradeModal";
+import { useUpgradePrompt } from "@/hooks/useUpgradePrompt";
 
 // ── Job link picker modal ─────────────────────────────────────────────────────
 
@@ -189,6 +191,7 @@ export function ResumeUploader() {
   const [streamPreview, setStreamPreview] = useState("");
   const [showJobPicker, setShowJobPicker] = useState(false);
   const { activeApplicationId } = useResumeLabStore();
+  const { showUpgrade, upgradeReason, openUpgrade, closeUpgrade } = useUpgradePrompt();
 
   useEffect(() => {
     const raw = sessionStorage.getItem("af_tailor_prefill");
@@ -248,6 +251,19 @@ export function ResumeUploader() {
 
   const handleTailor = async () => {
     if (!selectedContent || !jobDesc.trim()) return;
+
+    // Check usage before starting — the tailor endpoint is gated on the backend
+    // but we want to show a nice modal instead of a raw 402 error.
+    try {
+      const usage = await api.billing.getUsage();
+      if (usage.plan === "free") {
+        openUpgrade("AI Resume Tailoring is a Pro feature. Upgrade to unlock unlimited tailoring.");
+        return;
+      }
+    } catch {
+      // If usage check fails, let the backend gate it
+    }
+
     setStreamPreview("");
     setTailoredContent(null);
     setIsTailoring(true);
@@ -271,9 +287,15 @@ export function ResumeUploader() {
         // AI didn't return valid JSON — show raw output as fallback
         setStreamPreview(result || "No response received.");
       }
-    } catch {
-      setStreamPreview("Error: could not connect to AI backend.");
-      setTailoringInProgress(false); // go back to uploader on error
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("402") || msg.includes("usage_limit")) {
+        openUpgrade("You've hit your usage limit. Upgrade to Pro for unlimited access.");
+        setTailoringInProgress(false);
+      } else {
+        setStreamPreview("Error: could not connect to AI backend.");
+        setTailoringInProgress(false); // go back to uploader on error
+      }
     } finally {
       setIsTailoring(false);
     }
@@ -282,6 +304,8 @@ export function ResumeUploader() {
   const hasResume = !!selectedContent;
 
   return (
+    <>
+    <UpgradeModal open={showUpgrade} onClose={closeUpgrade} reason={upgradeReason} />
     <GlassPanel variant="card" className="p-5 space-y-4">
       <h2 className="text-title-md font-display font-semibold text-on-surface">Upload Resume</h2>
 
@@ -377,7 +401,7 @@ export function ResumeUploader() {
         <textarea
           value={jobDesc}
           onChange={(e) => setJobDesc(e.target.value)}
-          placeholder="Paste job description here..."
+          placeholder="Paste job description here...or guide ApplyFlow to improve your resume with specific instructions like 'Tailor for a software engineering role at a FAANG company, focusing on leadership and impact.'"
           rows={5}
           className={`w-full px-3 py-2.5 rounded-lg bg-surface-container text-body-sm text-on-surface
                      placeholder:text-on-surface-variant/40 focus:outline-none resize-none transition-all
@@ -448,5 +472,6 @@ export function ResumeUploader() {
         </div>
       )}
     </GlassPanel>
+    </>
   );
 }

@@ -1,0 +1,208 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Zap, Check, ExternalLink, RefreshCw } from "lucide-react";
+import { api, UsageData } from "@/lib/api";
+import { UpgradeModal } from "@/components/shared/UpgradeModal";
+
+function UsageMeter({
+  label,
+  used,
+  limit,
+}: {
+  label: string;
+  used: number;
+  limit: number | null;
+}) {
+  if (limit === null) {
+    return (
+      <div className="space-y-1">
+        <div className="flex justify-between text-label-sm">
+          <span className="text-on-surface-variant">{label}</span>
+          <span className="text-primary font-medium">Unlimited</span>
+        </div>
+        <div className="h-1.5 rounded-full bg-primary/20">
+          <div className="h-full w-full rounded-full bg-primary/40" />
+        </div>
+      </div>
+    );
+  }
+
+  const pct = Math.min((used / limit) * 100, 100);
+  const color =
+    pct >= 90
+      ? "bg-red-400"
+      : pct >= 60
+      ? "bg-amber-400"
+      : "bg-primary";
+
+  return (
+    <div className="space-y-1">
+      <div className="flex justify-between text-label-sm">
+        <span className="text-on-surface-variant">{label}</span>
+        <span className="text-on-surface">
+          {used} / {limit}
+        </span>
+      </div>
+      <div className="h-1.5 rounded-full bg-white/10">
+        <div
+          className={`h-full rounded-full transition-all ${color}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+export function BillingSettings() {
+  const [usage, setUsage] = useState<UsageData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [portalLoading, setPortalLoading] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.billing
+      .getUsage()
+      .then(setUsage)
+      .catch(() => setError("Failed to load usage data."))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handlePortal() {
+    setPortalLoading(true);
+    setError(null);
+    try {
+      const { url } = await api.billing.createPortal();
+      window.location.href = url;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to open portal.");
+      setPortalLoading(false);
+    }
+  }
+
+  const isPro = usage?.plan === "pro";
+
+  return (
+    <>
+      <UpgradeModal
+        open={showUpgrade}
+        onClose={() => setShowUpgrade(false)}
+      />
+
+      <div className="glass-panel rounded-2xl border border-white/10 p-6 space-y-6">
+        {/* Plan badge */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-primary/15 border border-primary/25 flex items-center justify-center">
+              <Zap className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-label-sm text-on-surface-variant">Current plan</p>
+              {loading ? (
+                <div className="mt-1 h-5 w-16 rounded bg-white/5 animate-pulse" />
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="text-title-sm font-semibold text-on-surface capitalize">
+                    {usage?.plan ?? "Free"}
+                  </span>
+                  {isPro && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary uppercase tracking-wide">
+                      <Check className="h-2.5 w-2.5" /> Pro
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {!loading && (
+            isPro ? (
+              <button
+                onClick={handlePortal}
+                disabled={portalLoading}
+                className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-label-sm text-on-surface-variant hover:bg-white/10 transition-colors disabled:opacity-60"
+              >
+                {portalLoading ? (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <ExternalLink className="h-3.5 w-3.5" />
+                )}
+                Manage Subscription
+              </button>
+            ) : (
+              <button
+                onClick={() => setShowUpgrade(true)}
+                className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-label-sm font-semibold text-white hover:bg-primary/90 transition-colors"
+              >
+                <Zap className="h-3.5 w-3.5" />
+                Upgrade to Pro
+              </button>
+            )
+          )}
+        </div>
+
+        {error && (
+          <p className="text-label-sm text-red-400">{error}</p>
+        )}
+
+        {/* Usage meters */}
+        {!loading && usage && (
+          <div className="space-y-4">
+            <p className="text-label-sm font-medium text-on-surface-variant uppercase tracking-wide">
+              This month&apos;s usage
+            </p>
+            <UsageMeter
+              label="AI Autofill Sessions"
+              used={usage.autofill_used}
+              limit={usage.autofill_limit}
+            />
+            <UsageMeter
+              label="Job Match Scores"
+              used={usage.score_used}
+              limit={usage.score_limit}
+            />
+            <UsageMeter
+              label="Resume Downloads (lifetime)"
+              used={usage.downloads_used}
+              limit={usage.downloads_limit}
+            />
+          </div>
+        )}
+
+        {loading && (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="space-y-1.5">
+                <div className="h-4 w-40 rounded bg-white/5 animate-pulse" />
+                <div className="h-1.5 w-full rounded-full bg-white/5 animate-pulse" />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Pro feature callout for free users */}
+        {!loading && !isPro && (
+          <div className="rounded-xl border border-primary/15 bg-primary/5 p-4 space-y-2">
+            <p className="text-label-sm font-semibold text-primary">What&apos;s included in Pro</p>
+            <ul className="space-y-1.5">
+              {[
+                "Unlimited AI autofill sessions",
+                "Unlimited job match scores",
+                "Unlimited resume downloads",
+                "AI resume tailoring + ATS scorer",
+                "AI field regeneration",
+                "Profile AI rewrite",
+              ].map((f) => (
+                <li key={f} className="flex items-center gap-2 text-label-sm text-on-surface-variant">
+                  <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
+                  {f}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}

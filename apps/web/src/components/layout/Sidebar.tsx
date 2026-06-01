@@ -12,6 +12,7 @@ import {
   ChevronRight,
   UserCircle,
   Search,
+  CreditCard,
 } from "lucide-react";
 import { cn } from "@applyflow/ui";
 import { GradientText } from "@applyflow/ui";
@@ -70,9 +71,15 @@ export function Sidebar() {
       {/* Bottom */}
       <div className="px-2 py-4">
         <Link href="/settings">
-          <span className="sidebar-item">
+          <span className={cn("sidebar-item", pathname.startsWith("/settings") && !pathname.startsWith("/settings/billing") && "active")}>
             <Settings className="h-4 w-4 shrink-0" />
             <span>Settings</span>
+          </span>
+        </Link>
+        <Link href="/settings/billing">
+          <span className={cn("sidebar-item", pathname.startsWith("/settings/billing") && "active")}>
+            <CreditCard className="h-4 w-4 shrink-0" />
+            <span>Billing</span>
           </span>
         </Link>
 

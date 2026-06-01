@@ -1200,8 +1200,8 @@ async function openPanel(fields: ScrapedField[], _skipTrackPrompt = false) {
               if (filled > 0) updateAssistantStatus("autofill_ready");
 
               // Offer to save fields the user typed manually (source === "none" means
-              // Claude had no answer from the profile — the user filled it in themselves).
-              // source === "ai" means Claude already derived it from the profile, so
+              // ApplyFlow AI had no answer from the profile — the user filled it in themselves).
+              // source === "ai" means ApplyFlow AI already derived it from the profile, so
               // there's no new data to save back.
               const learnedItems: LearnedItem[] = confirmed
                 .filter((i) =>
@@ -1434,7 +1434,7 @@ function _runInternal() {
   // On LinkedIn scope scanning to the modal so background page fields don't leak in
   const scanRoot = IS_LINKEDIN ? linkedInModalRoot() : document;
   const fields = scanFields(scanRoot);
-  // All non-file fields are actionable — Claude answers everything
+  // All non-file fields are actionable — ApplyFlow AI answers everything
   const actionableCount = fields.filter(f => f.fieldType !== "file").length;
 
   if (actionableCount === 0) {
