@@ -20,6 +20,11 @@ const ALL_FEATURES = [
     desc: "One click rewrites resume bullets to mirror job description keywords. ATS-optimized without fabrication.",
   },
   {
+    icon: "⬇️",
+    title: "Resume Download",
+    desc: "Download your AI-tailored resume as a polished PDF directly from the editor. One free download included.",
+  },
+  {
     icon: "📊",
     title: "Applications Kanban",
     desc: "Drag-and-drop board tracking every application from Saved to Offer. Auto-advances on submission detection.",

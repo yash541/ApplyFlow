@@ -5,6 +5,7 @@ import {
   FeaturesSection,
   HowItWorks,
   FeatureGrid,
+  PricingSection,
   InstallSection,
   FinalCTA,
   Footer,
@@ -22,6 +23,7 @@ export default function LandingPage() {
       <FeaturesSection />
       <HowItWorks />
       <FeatureGrid />
+      <PricingSection />
       <InstallSection />
       <FinalCTA />
       <Footer />

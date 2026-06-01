@@ -40,7 +40,7 @@ export function Navbar() {
           {[
             { label: "Features", href: "#features" },
             { label: "How It Works", href: "#how-it-works" },
-            { label: "Portals", href: "#portals" },
+            { label: "Portals", href: "#portals" },\n            { label: "Pricing", href: "#pricing" },
           ].map((link) => (
             <a
               key={link.label}

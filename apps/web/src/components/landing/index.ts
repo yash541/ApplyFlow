@@ -4,6 +4,7 @@ export { SocialProofBar } from "./SocialProofBar";
 export { FeaturesSection } from "./FeaturesSection";
 export { HowItWorks } from "./HowItWorks";
 export { FeatureGrid } from "./FeatureGrid";
+export { PricingSection } from "./PricingSection";
 export { InstallSection } from "./InstallSection";
 export { FinalCTA } from "./FinalCTA";
 export { Footer } from "./Footer";

@@ -13,7 +13,7 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   Save, Loader2, Pencil, Check, X, GripVertical, Eye, EyeOff,
   ArrowLeft, Sparkles, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Plus,
-  SlidersHorizontal, Trash2,
+  SlidersHorizontal, Trash2, Download,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
@@ -852,6 +852,21 @@ export function ResumeSplitEditor() {
     }
   }
 
+  // ── Download PDF ─────────────────────────────────────────────────────────
+  function handleDownload() {
+    const blob = latestBlobRef.current;
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const filename = content?.name
+      ?? generalName.trim()
+      ?? "resume";
+    a.download = `${filename.replace(/[^a-zA-Z0-9-_ ]/g, "")}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   // ── DnD ──────────────────────────────────────────────────────────────────
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   function handleDragEnd(event: DragEndEvent) {
@@ -936,6 +951,16 @@ export function ResumeSplitEditor() {
                 {compact ? "Compact on" : "Fit to 1 page"}
               </button>
             )}
+            {/* Download button — always visible once PDF is ready */}
+            <button
+              onClick={handleDownload}
+              disabled={!latestBlobRef.current}
+              title="Download PDF"
+              className="h-8 px-3 rounded-lg border border-white/15 text-xs font-medium flex items-center gap-1.5 text-white/60 hover:text-white hover:bg-white/8 hover:border-white/25 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <Download className="h-3.5 w-3.5" /> Download
+            </button>
+
             {/* Name input for general (unlinked) resumes */}
             {!activeApplicationId && !savedResumeId && (
               <input
