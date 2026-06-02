@@ -652,7 +652,7 @@ interface UsageCache {
 }
 
 let _usageCache: UsageCache | null = null;
-const USAGE_CACHE_TTL = 60_000; // refresh at most every 60s
+const USAGE_CACHE_TTL = 0; // always fetch fresh — ensures limit is always accurate
 
 async function fetchAndCacheUsage(): Promise<UsageCache | null> {
   try {
