@@ -232,7 +232,13 @@ async def get_resume_pdf_bytes(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return the base64-encoded PDF bytes for a tailored resume (used by the extension)."""
+    """Return the base64-encoded PDF bytes for a tailored resume.
+
+    Gates the download for free users (1 lifetime) and increments the counter.
+    Pro users: unlimited downloads.
+    Extension file-upload calls also go through this endpoint — they are not
+    counted as user downloads (they pass ?extension=true to skip the gate).
+    """
     result = await db.execute(
         select(Resume).where(
             Resume.id == uuid.UUID(resume_id),
@@ -242,6 +248,13 @@ async def get_resume_pdf_bytes(
     resume = result.scalar_one_or_none()
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
+
+    # Gate download for free users (only for tailored resumes — base resume is always free)
+    if resume.type == "tailored":
+        from app.core.usage import check_and_increment_download
+        await check_and_increment_download(current_user, db)
+        await db.commit()
+
     return {"pdf_bytes": resume.pdf_bytes}
 
 

@@ -18,6 +18,7 @@ import {
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { api, rewriteBullet } from "@/lib/api";
+import { useUpgradePrompt } from "@/hooks/useUpgradePrompt";
 import {
   useResumeLabStore, type TailoredContent, type TemplateId, type FontStyle,
   type CustomSection, type EditorPrefs,
@@ -854,18 +855,42 @@ export function ResumeSplitEditor() {
   }
 
   // ── Download PDF ─────────────────────────────────────────────────────────
-  function handleDownload() {
-    const blob = latestBlobRef.current;
-    if (!blob) return;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    const filename = content?.name
-      ?? generalName.trim()
-      ?? "resume";
-    a.download = `${filename.replace(/[^a-zA-Z0-9-_ ]/g, "")}.pdf`;
-    a.click();
-    URL.revokeObjectURL(url);
+  // If the resume is saved, go through the API (which gates free-tier downloads).
+  // If not yet saved, use the in-memory blob (unsaved work = always free to preview).
+  const { openUpgrade, closeUpgrade } = useUpgradePrompt();
+
+  async function handleDownload() {
+    const filename = (content?.name ?? generalName.trim() ?? "resume")
+      .replace(/[^a-zA-Z0-9-_ ]/g, "");
+
+    if (savedResumeId) {
+      // Saved resume → go through the backend so the download is gated + tracked
+      try {
+        const { pdf_bytes } = await api.resumes.getPdfBytes(savedResumeId);
+        if (!pdf_bytes) return;
+        const binary = atob(pdf_bytes);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const blob = new Blob([bytes], { type: "application/pdf" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = `${filename}.pdf`; a.click();
+        URL.revokeObjectURL(url);
+      } catch (err: unknown) {
+        if (err instanceof Error && err.message.toLowerCase().includes("402") ||
+            (err as { status?: number })?.status === 402) {
+          openUpgrade("resume_downloads");
+        }
+      }
+    } else {
+      // Not yet saved → in-memory blob, no gate (just a preview download)
+      const blob = latestBlobRef.current;
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `${filename}.pdf`; a.click();
+      URL.revokeObjectURL(url);
+    }
   }
 
   // ── DnD ──────────────────────────────────────────────────────────────────
