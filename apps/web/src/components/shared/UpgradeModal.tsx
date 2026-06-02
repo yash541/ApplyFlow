@@ -10,6 +10,13 @@ interface UpgradeModalProps {
   reason?: string;
 }
 
+const REASON_MESSAGES: Record<string, string> = {
+  resume_downloads:   "You've used your 1 free resume download. Upgrade to Pro for unlimited downloads.",
+  autofill_sessions:  "You've used all 10 free autofill sessions this month. Upgrade to Pro for unlimited autofills.",
+  match_scores:       "You've used all 10 free match scores this month. Upgrade to Pro for unlimited scoring.",
+  resume_tailoring:   "AI resume tailoring is a Pro feature. Upgrade to tailor resumes for any job.",
+};
+
 const PRO_FEATURES = [
   { icon: Zap,        label: "Unlimited AI autofill sessions" },
   { icon: Target,     label: "Unlimited job match scores" },
@@ -79,10 +86,10 @@ export function UpgradeModal({ open, onClose, reason }: UpgradeModalProps) {
           </div>
         </div>
 
-        {/* Reason banner */}
+        {/* Reason banner — map internal codes to human-readable messages */}
         {reason && (
           <div className="mt-4 px-4 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-label-sm text-amber-400">
-            {reason}
+            {REASON_MESSAGES[reason] ?? reason}
           </div>
         )}
 
