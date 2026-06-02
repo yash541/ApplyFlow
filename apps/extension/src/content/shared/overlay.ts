@@ -29,6 +29,25 @@ function _clearAnim() {
 function _scoreEl()  { return document.querySelector<HTMLElement>(".af-score-value");  }
 function _bubbleEl() { return document.querySelector<HTMLElement>(".af-bubble-score"); }
 function _tierEl()   { return document.querySelector<HTMLElement>(".af-tier"); }
+function _arcEl()    { return document.querySelector<SVGCircleElement>(".af-score-arc"); }
+
+const ARC_R = 38;
+const ARC_C = 2 * Math.PI * ARC_R; // ≈ 238.76
+
+function _scoreColor(score: number): string {
+  if (score >= 85) return "#10b981"; // green  - Excellent
+  if (score >= 70) return "#6366f1"; // indigo - Good
+  if (score >= 50) return "#f59e0b"; // amber  - Fair
+  return "#ef4444";                   // red    - Low
+}
+
+function _updateArc(score: number): void {
+  const arc = _arcEl();
+  if (!arc) return;
+  const pct    = Math.max(0, Math.min(100, score)) / 100;
+  arc.style.strokeDashoffset = String(ARC_C * (1 - pct));
+  arc.style.stroke = _scoreColor(score);
+}
 
 function startScoreAnim() {
   _animCurrent = 0;
@@ -39,6 +58,7 @@ function startScoreAnim() {
     const s = _scoreEl(); const b = _bubbleEl();
     if (s) s.textContent = String(_animCurrent);
     if (b) b.textContent = String(_animCurrent);
+    _updateArc(_animCurrent);
   }, 30); // 1 per 30ms → 0→55 in ~1.65s
 }
 
@@ -79,6 +99,7 @@ export function updateOverlayScore(finalScore: number, scoreBasis: string): void
     const s = _scoreEl(); const b = _bubbleEl();
     if (s) s.textContent = display;
     if (b) b.textContent = display;
+    _updateArc(cur);
   }, interval);
 }
 
@@ -197,9 +218,25 @@ export function injectOverlay(
         <button class="af-close" id="af-close">✕</button>
       </div>
       <div class="af-score-section">
-        <div class="af-score-ring">
-          <span class="af-score-value">${displayScore}</span>
-          <span class="af-score-label">match</span>
+        <div class="af-score-ring" style="position:relative;width:90px;height:90px;flex-shrink:0;">
+          <svg width="90" height="90" viewBox="0 0 90 90" style="position:absolute;top:0;left:0;">
+            <!-- background track -->
+            <circle cx="45" cy="45" r="${ARC_R}" fill="none"
+              stroke="rgba(255,255,255,0.08)" stroke-width="5.5"/>
+            <!-- animated score arc — starts at top (rotated -90°) -->
+            <circle cx="45" cy="45" r="${ARC_R}" fill="none"
+              stroke="${_scoreColor(isLoading ? 0 : matchScore)}" stroke-width="5.5"
+              stroke-linecap="round"
+              stroke-dasharray="${ARC_C.toFixed(2)}"
+              stroke-dashoffset="${(ARC_C * (1 - (isLoading ? 0 : matchScore) / 100)).toFixed(2)}"
+              class="af-score-arc"
+              transform="rotate(-90 45 45)"
+              style="transition:stroke-dashoffset 0.08s linear,stroke 0.35s ease;"/>
+          </svg>
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;">
+            <span class="af-score-value" style="font-size:${isLimited ? "18" : "24"}px;font-weight:800;color:#fff;line-height:1;">${displayScore}</span>
+            <span class="af-score-label" style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.4);letter-spacing:0.08em;text-transform:uppercase;">MATCH</span>
+          </div>
         </div>
         <div class="af-score-info">
           <p class="af-company">${jobData.company}</p>
