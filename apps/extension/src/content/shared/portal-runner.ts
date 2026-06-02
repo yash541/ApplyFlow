@@ -1,6 +1,6 @@
 import type { LinkedInJobData, ExtensionMessage, NotificationType } from "@applyflow/shared";
 import { showToast, clearAllToasts } from "./toast";
-import { injectOverlay, updateOverlayScore, type AppRecord } from "./overlay";
+import { injectOverlay, updateOverlayScore, injectLoadingOverlay, type AppRecord } from "./overlay";
 import { waitForStableDOM } from "../runtime/dom-stability";
 import { scrapeWithRetries } from "../runtime/runtime-manager";
 import { buildFingerprint } from "../tracking/fingerprint";
@@ -178,9 +178,11 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
   flushPendingToast();
 
   runtimeState.transition(RuntimeState.STABILIZING);
-  // Wait for the DOM to stop mutating rather than sleeping a fixed 1500ms.
   await waitForStableDOM({ stableWindow: 600, timeout: 5000 });
-  if (runId !== currentRunId) return; // newer navigation started — abort
+  if (runId !== currentRunId) return;
+
+  // ── Show loading overlay immediately — user sees it while scraping runs ──
+  if (runId === currentRunId) injectLoadingOverlay();
 
   runtimeState.transition(RuntimeState.EXTRACTING);
   // Retry up to 3 times (1s, 2s backoff) — handles portals where the first

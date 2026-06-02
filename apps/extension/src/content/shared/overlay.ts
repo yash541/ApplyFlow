@@ -177,6 +177,122 @@ function loginRequiredToast() {
     { label: "Log in →", onClick: openLogin }, 8000);
 }
 
+// ── Loading overlay (appears immediately, no job data yet) ───────────────────
+
+export function injectLoadingOverlay(): void {
+  document.getElementById("applyflow-overlay")?.remove();
+  _clearAnim();
+  _animCurrent = 0;
+
+  const arcC = ARC_C.toFixed(2);
+  const container = document.createElement("div");
+  container.id = "applyflow-overlay";
+  container.innerHTML = `
+    <div class="af-panel af-open" id="af-panel">
+      <div class="af-header">
+        <span class="af-logo">⚡ ApplyFlow AI</span>
+        <button class="af-close" id="af-close">✕</button>
+      </div>
+      <div class="af-score-section">
+        <div class="af-score-ring" style="position:relative;width:90px;height:90px;flex-shrink:0;">
+          <svg width="90" height="90" viewBox="0 0 90 90" style="position:absolute;top:0;left:0;">
+            <circle cx="45" cy="45" r="${ARC_R}" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="5.5"/>
+            <circle cx="45" cy="45" r="${ARC_R}" fill="none"
+              stroke="#ef4444" stroke-width="5.5" stroke-linecap="round"
+              stroke-dasharray="${arcC}" stroke-dashoffset="${arcC}"
+              class="af-score-arc" transform="rotate(-90 45 45)"
+              style="transition:stroke-dashoffset 0.08s linear,stroke 0.35s ease;"/>
+          </svg>
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;">
+            <span class="af-score-value" style="font-size:24px;font-weight:800;color:#fff;line-height:1;">0</span>
+            <span class="af-score-label" style="font-size:9px;font-weight:700;color:rgba(255,255,255,0.4);letter-spacing:0.08em;text-transform:uppercase;">MATCH</span>
+          </div>
+        </div>
+        <div class="af-score-info">
+          <div class="af-shimmer" style="width:90px;height:10px;margin-bottom:8px;"></div>
+          <div class="af-shimmer" style="width:150px;height:14px;margin-bottom:10px;"></div>
+          <p class="af-tier" style="font-size:11px;color:rgba(255,255,255,0.35);">🔍 Scanning job...</p>
+        </div>
+      </div>
+      <div class="af-actions" id="af-actions">
+        <div class="af-shimmer" style="width:100%;height:38px;border-radius:10px;"></div>
+      </div>
+    </div>
+    <button class="af-bubble" id="af-bubble">
+      <span class="af-bubble-logo">⚡</span>
+      <span class="af-bubble-score">0</span>
+    </button>
+  `;
+
+  document.body.appendChild(container);
+
+  // Wire close button and bubble toggle
+  const panel  = document.getElementById("af-panel") as HTMLElement;
+  const bubble = document.getElementById("af-bubble") as HTMLButtonElement;
+  let isOpen = true;
+  function closePanel() { panel.style.display = "none"; isOpen = false; }
+  function openPanel()  { panel.style.display = "flex"; isOpen = true; }
+  bubble.addEventListener("click", () => { isOpen ? closePanel() : openPanel(); });
+  document.getElementById("af-close")?.addEventListener("click", closePanel);
+
+  // Start the count-up animation immediately
+  startScoreAnim();
+}
+
+/** Populate the loading overlay with real job data (called after scraping).
+ *  Replaces shimmer skeletons with actual content, fading in smoothly. */
+export function populateOverlayContent(
+  jobData: LinkedInJobData,
+  existing: AppRecord,
+  fingerprint: JobFingerprint | undefined,
+  onAppSaved: ((appId: string) => void) | undefined,
+): void {
+  const info = document.querySelector<HTMLElement>(".af-score-info");
+  if (info) {
+    info.innerHTML = `
+      <p class="af-company af-content-fade-in">${jobData.company}</p>
+      <p class="af-title  af-content-fade-in">${jobData.title}</p>
+      <p class="af-tier   af-content-fade-in">🔴 Low Match…</p>`;
+  }
+
+  const actions = document.getElementById("af-actions");
+  if (actions) {
+    const actionsHtml = existing
+      ? buildTrackedSection(existing)
+      : `<button class="af-btn-primary" id="af-save">+ Track this job</button>`;
+    actions.innerHTML = actionsHtml;
+    actions.classList.add("af-content-fade-in");
+
+    // Wire the save button if not already tracked
+    if (!existing) {
+      actions.querySelector("#af-save")?.addEventListener("click", () => {
+        const saveBtn = document.getElementById("af-save") as HTMLButtonElement | null;
+        if (!saveBtn || saveBtn.disabled) return;
+        saveBtn.disabled = true; saveBtn.textContent = "Tracking…";
+        chrome.runtime.sendMessage(
+          { type: "SYNC_APPLICATION", payload: { jobData, status: "saved",
+              fingerprintHash: fingerprint?.hash, portal: fingerprint?.portal,
+              canonicalUrl: fingerprint?.canonicalUrl, externalJobId: fingerprint?.externalJobId } },
+          (res: { success?: boolean; error?: string; data?: { id?: string } } | null) => {
+            if (res?.success && res.data?.id) { onAppSaved?.(res.data.id); }
+            else {
+              if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = "+ Track this job"; }
+            }
+          }
+        );
+      });
+    }
+    if (existing?.id) {
+      // Attach pipeline advance + action listeners
+      const dummyOverlayEl = document.getElementById("applyflow-overlay");
+      if (dummyOverlayEl) {
+        // Re-use the existing attachAdvanceListener via re-inject trick
+        injectOverlay(0, jobData, existing, fingerprint, onAppSaved, "loading");
+      }
+    }
+  }
+}
+
 // ── Main overlay injector ─────────────────────────────────────────────────────
 
 export function injectOverlay(
