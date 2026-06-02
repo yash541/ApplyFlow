@@ -44,7 +44,7 @@ class UsageResponse(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _stripe_client() -> stripe.Stripe:
+def _stripe_client():
     if not settings.STRIPE_SECRET_KEY:
         raise HTTPException(status_code=503, detail="Stripe is not configured.")
     stripe.api_key = settings.STRIPE_SECRET_KEY
