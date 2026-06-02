@@ -293,6 +293,76 @@ export function populateOverlayContent(
   }
 }
 
+// ── Button wiring helpers (reused by in-place update + full inject) ───────────
+
+function _wireSaveButton(
+  container: HTMLElement,
+  jobData: LinkedInJobData,
+  fingerprint: JobFingerprint | undefined,
+  onAppSaved: ((id: string) => void) | undefined,
+): void {
+  const saveBtn = container.querySelector<HTMLButtonElement>("#af-save");
+  if (!saveBtn) return;
+  saveBtn.addEventListener("click", () => {
+    if (saveBtn.disabled) return;
+    saveBtn.disabled = true; saveBtn.textContent = "Tracking…";
+    chrome.runtime.sendMessage(
+      { type: "SYNC_APPLICATION", payload: {
+          jobData, status: "saved",
+          fingerprintHash: fingerprint?.hash, portal: fingerprint?.portal,
+          canonicalUrl: fingerprint?.canonicalUrl, externalJobId: fingerprint?.externalJobId,
+        } } as ExtensionMessage,
+      (res: { success?: boolean; data?: { id?: string }; error?: string } | null) => {
+        if (chrome.runtime.lastError || !res?.success) {
+          if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = "+ Track this job"; }
+          if (!res || res.error === "AUTH_REQUIRED") loginRequiredToast();
+          else showToast("error", "Tracking failed", res?.error ?? "Could not save this job.");
+        } else if (res.data?.id) {
+          onAppSaved?.(res.data.id);
+        }
+      }
+    );
+  });
+}
+
+function _wireAdvanceAndActionListeners(
+  app: NonNullable<AppRecord>,
+  jobData: LinkedInJobData,
+  _fingerprint: JobFingerprint | undefined,
+  _onAppSaved: ((id: string) => void) | undefined,
+): void {
+  let currentApp = { ...app };
+  const NEXT: Record<string, string> = {
+    saved: "applied", applied: "interview", screening: "interview",
+    interview: "offer", technical: "offer",
+  };
+  const advBtn = document.getElementById("af-advance") as HTMLButtonElement | null;
+  if (advBtn) {
+    advBtn.addEventListener("click", () => {
+      const next = NEXT[currentApp.status];
+      if (!advBtn || !next) return;
+      advBtn.disabled = true; advBtn.textContent = "Updating…";
+      chrome.runtime.sendMessage(
+        { type: "UPDATE_APP_STATUS", payload: { id: currentApp.id, status: next } } as ExtensionMessage,
+        (res: { success?: boolean; error?: string } | null) => {
+          if (!res?.success) {
+            advBtn.disabled = false;
+            advBtn.textContent = `→ Move to ${PIPELINE_LABELS[next] ?? next}`;
+            if (!res || res.error === "AUTH_REQUIRED") loginRequiredToast();
+          } else {
+            currentApp = { ...currentApp, status: next };
+          }
+        }
+      );
+    });
+  }
+  document.getElementById("af-tailor")?.addEventListener("click", () => {
+    chrome.runtime.sendMessage({ type: "OPEN_TAILOR",
+      payload: { jd: jobData.description, company: jobData.company,
+                 role: jobData.title, applicationId: app.id } } as ExtensionMessage);
+  });
+}
+
 // ── Main overlay injector ─────────────────────────────────────────────────────
 
 export function injectOverlay(
@@ -303,6 +373,42 @@ export function injectOverlay(
   onAppSaved?: (appId: string) => void,
   scoreBasis: string = "full_jd",
 ): void {
+  // If a loading overlay is already on screen, update it in place — no flash/flicker.
+  // Only the shimmer content (score-info + actions) is swapped; the container,
+  // score ring SVG, and running animation are left untouched.
+  const loadingOverlay = document.getElementById("applyflow-overlay");
+  if (loadingOverlay && loadingOverlay.querySelector(".af-shimmer") && scoreBasis !== "loading") {
+    const isLimited   = scoreBasis === "limit_exceeded";
+    const isEstimated = scoreBasis === "title_only";
+    const tierLabel =
+      isLimited ? "Upgrade for scores" :
+      matchScore >= 85 ? "🟢 Excellent" :
+      matchScore >= 70 ? "🔵 Good" :
+      matchScore >= 50 ? "🟡 Fair" : "🔴 Low";
+
+    // Replace shimmer score-info with real company/title/tier
+    const info = loadingOverlay.querySelector<HTMLElement>(".af-score-info");
+    if (info) {
+      info.innerHTML = `
+        <p class="af-company af-content-fade-in">${jobData.company}</p>
+        <p class="af-title  af-content-fade-in">${jobData.title}</p>
+        <p class="af-tier   af-content-fade-in">${tierLabel} Match${isEstimated ? " (est.)" : ""}</p>`;
+    }
+
+    // Replace shimmer action button with real track/advance button
+    const actions = loadingOverlay.querySelector<HTMLElement>("#af-actions");
+    if (actions) {
+      const actionsHtml = existing
+        ? buildTrackedSection(existing)
+        : `<button class="af-btn-primary af-content-fade-in" id="af-save">+ Track this job</button>`;
+      actions.innerHTML = actionsHtml;
+      // Wire the save button
+      _wireSaveButton(actions, jobData, fingerprint, onAppSaved);
+      if (existing) { _wireAdvanceAndActionListeners(existing, jobData, fingerprint, onAppSaved); }
+    }
+    return; // skip full re-inject — overlay stays in place
+  }
+
   document.getElementById("applyflow-overlay")?.remove();
 
   _clearAnim();
