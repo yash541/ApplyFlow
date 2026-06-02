@@ -215,9 +215,9 @@ export function ResumeList() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("download_limit_exceeded") || msg.includes("402")) {
-        openUpgrade("You've used your free resume download. Upgrade to Pro for unlimited downloads.");
+      const status = (err as { status?: number })?.status;
+      if (status === 402) {
+        openUpgrade("You've used your 1 free resume download. Upgrade to Pro for unlimited downloads.");
       }
     }
   }

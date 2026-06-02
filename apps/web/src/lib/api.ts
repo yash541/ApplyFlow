@@ -21,13 +21,16 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     const detail = err.detail;
-    // FastAPI returns detail as a string for HTTPException, or an array of
-    // validation error objects for 422 Unprocessable Entity.
     const msg =
       typeof detail === "string"  ? detail :
       Array.isArray(detail)       ? detail.map((e: { msg?: string }) => e.msg ?? String(e)).join(", ") :
-                                    "Request failed";
-    throw new Error(msg);
+      typeof detail === "object" && detail !== null && "code" in detail
+                                  ? String((detail as Record<string, unknown>).code)
+                                  : "Request failed";
+    // Attach HTTP status so callers can distinguish 402 Payment Required etc.
+    const error = new Error(msg) as Error & { status: number };
+    error.status = res.status;
+    throw error;
   }
   return res.json() as Promise<T>;
 }

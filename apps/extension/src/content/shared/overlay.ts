@@ -173,9 +173,11 @@ export function injectOverlay(
 
   const isLoading   = scoreBasis === "loading";
   const isEstimated = scoreBasis === "title_only";
-  const displayScore = isLoading ? "0" : isEstimated ? `~${matchScore}` : `${matchScore}`;
+  const isLimited   = scoreBasis === "limit_exceeded";
+  const displayScore = isLoading ? "0" : isLimited ? "🔒" : isEstimated ? `~${matchScore}` : `${matchScore}`;
 
   const tierLabel =
+    isLimited ? "Upgrade for scores" :
     matchScore >= 85 ? "🟢 Excellent" :
     matchScore >= 70 ? "🔵 Good" :
     matchScore >= 50 ? "🟡 Fair" : "🔴 Low";

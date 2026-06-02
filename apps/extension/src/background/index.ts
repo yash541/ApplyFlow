@@ -651,7 +651,9 @@ async function smartMatchStream(
   });
 
   if (!res.ok || !res.body) {
-    chrome.tabs.sendMessage(tabId, { type: "SMART_MATCH_DONE" }).catch(() => {});
+    // 402 = usage limit — send specific message so content script can show upgrade prompt
+    const msgType = res.status === 402 ? "SMART_MATCH_LIMIT" : "SMART_MATCH_DONE";
+    chrome.tabs.sendMessage(tabId, { type: msgType }).catch(() => {});
     return;
   }
 

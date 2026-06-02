@@ -1241,13 +1241,37 @@ async function openPanel(fields: ScrapedField[], _skipTrackPrompt = false) {
         );
 
         // ── Register streaming listener AFTER sidebar is in the DOM ──────────
-        // Background pushes FIELD_ANSWER as each answer arrives, SMART_MATCH_DONE when all done.
         const onStreamMsg = (msg: { type: string; payload?: SmartAnswer }) => {
           if (msg.type === "FIELD_ANSWER" && msg.payload) {
             applyAnswerToSidebar(msg.payload);
           } else if (msg.type === "SMART_MATCH_DONE") {
             chrome.runtime.onMessage.removeListener(onStreamMsg);
             syncPanelCounts();
+          } else if (msg.type === "SMART_MATCH_LIMIT") {
+            // Autofill usage exhausted — replace the sidebar with an upgrade prompt
+            chrome.runtime.onMessage.removeListener(onStreamMsg);
+            const panel = document.getElementById(`${AF_ID}-panel`);
+            if (panel) {
+              const fieldList = panel.querySelector(".af-field-list");
+              if (fieldList) {
+                fieldList.innerHTML = `
+                  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:36px 20px;text-align:center;">
+                    <div style="font-size:32px;">🔒</div>
+                    <div style="font-size:13px;font-weight:700;color:#f0f0ff;">Autofill limit reached</div>
+                    <div style="font-size:11px;color:#6b7280;line-height:1.6;">
+                      You've used all 10 free autofill sessions this month.<br/>
+                      Upgrade to Pro for unlimited autofills.
+                    </div>
+                    <button onclick="chrome.runtime.sendMessage({type:'OPEN_LOGIN'})"
+                      style="background:#6366f1;color:#fff;border:none;border-radius:10px;padding:9px 20px;font-size:12px;font-weight:600;cursor:pointer;margin-top:4px;">
+                      ⚡ Upgrade to Pro →
+                    </button>
+                  </div>`;
+              }
+              // Disable fill button
+              const fillBtn = panel.querySelector<HTMLButtonElement>(`#${AF_ID}-fill-btn`);
+              if (fillBtn) { fillBtn.disabled = true; fillBtn.textContent = "Limit reached"; }
+            }
           }
           return true;
         };

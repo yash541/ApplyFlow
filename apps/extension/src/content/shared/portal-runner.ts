@@ -285,8 +285,19 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
         // When ApplyFlow AI responds, animate the score to the real value.
         chrome.runtime.sendMessage(
           { type: "ANALYZE_JOB", payload: jobData } as ExtensionMessage,
-          (scoreRes: { overall_score?: number; overallScore?: number; score_basis?: string } | null) => {
+          (scoreRes: { overall_score?: number; overallScore?: number; score_basis?: string; error?: string } | null) => {
             if (chrome.runtime.lastError || runId !== currentRunId) return;
+
+            // Usage limit reached — tell user clearly instead of showing a fake score
+            if (scoreRes?.error === "AUTH_REQUIRED" || (scoreRes as { detail?: { code?: string } } | null)?.detail?.code === "usage_limit_exceeded") {
+              updateOverlayScore(0, "limit_exceeded");
+              showToast("info", "Match score limit reached",
+                "You've used all 10 free scores this month. Upgrade to Pro for unlimited.",
+                { label: "Upgrade →", onClick: () => chrome.runtime.sendMessage({ type: "OPEN_LOGIN" }) },
+                8000);
+              return;
+            }
+
             resolvedScore = scoreRes?.overall_score ?? scoreRes?.overallScore ?? Math.floor(Math.random() * 30) + 65;
             resolvedBasis = scoreRes?.score_basis ?? "full_jd";
 
