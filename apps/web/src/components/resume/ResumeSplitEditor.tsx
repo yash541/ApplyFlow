@@ -864,7 +864,15 @@ export function ResumeSplitEditor() {
       .replace(/[^a-zA-Z0-9-_ ]/g, "");
 
     if (savedResumeId) {
-      // Saved resume → go through the backend so the download is gated + tracked
+      // Pre-check usage instantly before the backend call so feedback is immediate
+      try {
+        const usage = await api.billing.getUsage();
+        if (usage.downloads_limit !== null && usage.downloads_used >= (usage.downloads_limit ?? 1)) {
+          openUpgrade("resume_downloads");
+          return;
+        }
+      } catch { /* if usage fetch fails, let the backend gate it */ }
+
       try {
         const { pdf_bytes } = await api.resumes.getPdfBytes(savedResumeId);
         if (!pdf_bytes) return;
