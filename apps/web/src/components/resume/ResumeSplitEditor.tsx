@@ -516,6 +516,14 @@ export function ResumeSplitEditor() {
   const [blobReady, setBlobReady] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [zoom, setZoom] = useState(1.0);
+  const [downloadState, setDownloadState] = useState<"idle" | "downloading">("idle");
+  // Pre-fetch usage on mount so Download limit check is instant when clicked
+  const [cachedUsage, setCachedUsage] = useState<{ downloads_used: number; downloads_limit: number | null } | null>(null);
+  useEffect(() => {
+    api.billing.getUsage()
+      .then(u => setCachedUsage({ downloads_used: u.downloads_used, downloads_limit: u.downloads_limit }))
+      .catch(() => {});
+  }, []);
   // Name for general (unlinked) resumes — shown as editable input in toolbar
   const [generalName, setGeneralName] = useState(
     `General Resume – ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
@@ -864,14 +872,14 @@ export function ResumeSplitEditor() {
       .replace(/[^a-zA-Z0-9-_ ]/g, "");
 
     if (savedResumeId) {
-      // Pre-check usage instantly before the backend call so feedback is immediate
-      try {
-        const usage = await api.billing.getUsage();
-        if (usage.downloads_limit !== null && usage.downloads_used >= (usage.downloads_limit ?? 1)) {
-          openUpgrade("resume_downloads");
-          return;
-        }
-      } catch { /* if usage fetch fails, let the backend gate it */ }
+      // Check cached usage instantly (pre-fetched on mount) — zero wait
+      const usage = cachedUsage ?? await api.billing.getUsage().catch(() => null);
+      if (usage && usage.downloads_limit !== null && usage.downloads_used >= (usage.downloads_limit ?? 1)) {
+        openUpgrade("resume_downloads");
+        return;
+      }
+
+      setDownloadState("downloading");
 
       try {
         const { pdf_bytes } = await api.resumes.getPdfBytes(savedResumeId);
@@ -885,10 +893,11 @@ export function ResumeSplitEditor() {
         a.href = url; a.download = `${filename}.pdf`; a.click();
         URL.revokeObjectURL(url);
       } catch (err: unknown) {
-        if (err instanceof Error && err.message.toLowerCase().includes("402") ||
-            (err as { status?: number })?.status === 402) {
+        if ((err as { status?: number })?.status === 402) {
           openUpgrade("resume_downloads");
         }
+      } finally {
+        setDownloadState("idle");
       }
     } else {
       // Not yet saved → in-memory blob, no gate (just a preview download)
@@ -987,12 +996,15 @@ export function ResumeSplitEditor() {
             )}
             {/* Download button — always visible once PDF is ready */}
             <button
-              onClick={handleDownload}
-              disabled={!blobReady}
+              onClick={() => void handleDownload()}
+              disabled={!blobReady || downloadState === "downloading"}
               title="Download PDF"
               className="h-8 px-3 rounded-lg border border-white/15 text-xs font-medium flex items-center gap-1.5 text-white/60 hover:text-white hover:bg-white/8 hover:border-white/25 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              <Download className="h-3.5 w-3.5" /> Download
+              {downloadState === "downloading"
+                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Downloading…</>
+                : <><Download className="h-3.5 w-3.5" /> Download</>
+              }
             </button>
 
             {/* Name input for general (unlinked) resumes */}
