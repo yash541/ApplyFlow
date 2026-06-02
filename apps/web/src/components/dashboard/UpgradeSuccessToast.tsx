@@ -3,15 +3,19 @@
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { CheckCircle2, X } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 
 export function UpgradeSuccessToast() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     if (searchParams.get("upgraded") === "true") {
       setVisible(true);
+      // Invalidate usage cache so UsageBanner hides immediately
+      queryClient.invalidateQueries({ queryKey: ["billing-usage"] });
       // Remove the query param from the URL without a page reload
       const url = new URL(window.location.href);
       url.searchParams.delete("upgraded");

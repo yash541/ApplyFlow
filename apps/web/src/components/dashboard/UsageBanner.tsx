@@ -1,17 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Zap, ArrowRight } from "lucide-react";
-import { api, UsageData } from "@/lib/api";
+import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
+import { api } from "@/lib/api";
 import { useUpgradePrompt } from "@/hooks/useUpgradePrompt";
 
 export function UsageBanner() {
-  const [usage, setUsage] = useState<UsageData | null>(null);
   const openUpgrade = useUpgradePrompt((s) => s.openUpgrade);
+  const searchParams = useSearchParams();
 
-  useEffect(() => {
-    api.billing.getUsage().then(setUsage).catch(() => null);
-  }, []);
+  // Use React Query so UpgradeSuccessToast can invalidate this when payment completes
+  const { data: usage } = useQuery({
+    queryKey: ["billing-usage"],
+    queryFn: () => api.billing.getUsage(),
+    staleTime: 60_000,
+  });
+
+  // Hide if upgrade just happened (URL has ?upgraded=true) to avoid contradictory banners
+  if (searchParams.get("upgraded") === "true") return null;
 
   // Only show for free users when usage exceeds 50% on any meter
   if (!usage || usage.plan === "pro") return null;
