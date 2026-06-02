@@ -2,6 +2,15 @@ import type { NotificationType } from "@applyflow/shared";
 
 export type ToastAction = { label: string; onClick: () => void };
 
+/** Immediately dismiss all visible toasts — called on SPA navigation so stale
+ *  toasts from the previous job don't overlap with the new overlay. */
+export function clearAllToasts(): void {
+  document.querySelectorAll<HTMLElement>(".af-toast").forEach(el => {
+    el.classList.add("af-toast-hide");
+    setTimeout(() => el.remove(), 230);
+  });
+}
+
 export function showToast(
   type: NotificationType,
   title: string,

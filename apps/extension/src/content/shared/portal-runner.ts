@@ -1,5 +1,5 @@
 import type { LinkedInJobData, ExtensionMessage, NotificationType } from "@applyflow/shared";
-import { showToast } from "./toast";
+import { showToast, clearAllToasts } from "./toast";
 import { injectOverlay, updateOverlayScore, type AppRecord } from "./overlay";
 import { waitForStableDOM } from "../runtime/dom-stability";
 import { scrapeWithRetries } from "../runtime/runtime-manager";
@@ -171,8 +171,8 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
   // Stop any apply interceptor from the previous job before starting fresh
   if (stopInterceptor) { stopInterceptor(); stopInterceptor = null; }
 
-  // Remove stale overlay immediately so the user never sees the wrong job
-  // while we wait for the new page to settle.
+  // Clear stale toasts + overlay so navigation to a new job starts clean
+  clearAllToasts();
   clearSession();
   document.getElementById("applyflow-overlay")?.remove();
   flushPendingToast();
