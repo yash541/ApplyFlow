@@ -102,6 +102,13 @@ chrome.runtime.onMessage.addListener(
       return true;
     }
 
+    if (message.type === "GET_USAGE") {
+      void getUsageCache()
+        .then(sendResponse)
+        .catch(() => sendResponse(null));
+      return true;
+    }
+
     if (message.type === "SMART_MATCH") {
       const tabId = sender.tab?.id;
       // Start streaming — answers pushed to tab via chrome.tabs.sendMessage as they arrive.
@@ -630,6 +637,42 @@ async function getMatches(payload: { fields: unknown[]; url: string; job_context
   }
 }
 
+// ── Usage cache ───────────────────────────────────────────────────────────────
+// Cached so the content script can check limits instantly without a round-trip.
+
+interface UsageCache {
+  plan: string;
+  autofill_used: number;
+  autofill_limit: number | null;
+  score_used: number;
+  score_limit: number | null;
+  downloads_used: number;
+  downloads_limit: number | null;
+  fetchedAt: number;
+}
+
+let _usageCache: UsageCache | null = null;
+const USAGE_CACHE_TTL = 60_000; // refresh at most every 60s
+
+async function fetchAndCacheUsage(): Promise<UsageCache | null> {
+  try {
+    const token = await getToken();
+    if (!token) return null;
+    const res = await authedFetch(`${API_BASE}/api/v1/billing/usage`);
+    if (!res.ok) return null;
+    const data = await res.json() as UsageCache;
+    _usageCache = { ...data, fetchedAt: Date.now() };
+    return _usageCache;
+  } catch { return null; }
+}
+
+async function getUsageCache(): Promise<UsageCache | null> {
+  if (_usageCache && Date.now() - _usageCache.fetchedAt < USAGE_CACHE_TTL) {
+    return _usageCache;
+  }
+  return fetchAndCacheUsage();
+}
+
 async function smartMatchStream(
   payload: { fields: unknown[]; url: string; job_context?: string },
   tabId: number | undefined,
@@ -651,9 +694,12 @@ async function smartMatchStream(
   });
 
   if (!res.ok || !res.body) {
-    // 402 = usage limit — send specific message so content script can show upgrade prompt
-    const msgType = res.status === 402 ? "SMART_MATCH_LIMIT" : "SMART_MATCH_DONE";
-    chrome.tabs.sendMessage(tabId, { type: msgType }).catch(() => {});
+    if (res.status === 402) {
+      _usageCache = null; // invalidate so next GET_USAGE fetches fresh data
+      chrome.tabs.sendMessage(tabId, { type: "SMART_MATCH_LIMIT" }).catch(() => {});
+    } else {
+      chrome.tabs.sendMessage(tabId, { type: "SMART_MATCH_DONE" }).catch(() => {});
+    }
     return;
   }
 

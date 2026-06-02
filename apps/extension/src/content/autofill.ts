@@ -1160,6 +1160,44 @@ async function openPanel(fields: ScrapedField[], _skipTrackPrompt = false) {
       fields,
       loggedIn,
       async () => {
+        // ── Pre-flight usage check (instant from cache) ───────────────────────
+        // Check BEFORE opening the sidebar so user sees limit screen immediately,
+        // not after the sidebar opens with empty fields.
+        const usage = await new Promise<{ autofill_used?: number; autofill_limit?: number | null } | null>(
+          resolve => chrome.runtime.sendMessage({ type: "GET_USAGE" }, resolve)
+        );
+        if (usage && usage.autofill_limit !== null && usage.autofill_limit !== undefined &&
+            (usage.autofill_used ?? 0) >= usage.autofill_limit) {
+          // Show limit screen directly — no sidebar flash
+          swapPanel((() => {
+            const p = document.createElement("div");
+            p.id = `${AF_ID}-panel`;
+            p.innerHTML = `
+              <div class="af-header">
+                <div><div class="af-title-text">⚡ ApplyFlow</div></div>
+                <span class="af-x">✕</span>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:40px 20px;text-align:center;">
+                <div style="font-size:36px;">🔒</div>
+                <div style="font-size:14px;font-weight:700;color:#f0f0ff;">Autofill limit reached</div>
+                <div style="font-size:12px;color:#6b7280;line-height:1.6;max-width:260px;">
+                  You've used all ${usage.autofill_limit} free autofill sessions this month.<br/>
+                  Upgrade to Pro for unlimited autofills.
+                </div>
+                <button id="${AF_ID}-upgrade-btn"
+                  style="background:#6366f1;color:#fff;border:none;border-radius:12px;padding:10px 22px;font-size:13px;font-weight:700;cursor:pointer;margin-top:4px;">
+                  ⚡ Upgrade to Pro →
+                </button>
+              </div>`;
+            p.querySelector(".af-x")?.addEventListener("click", closePanel);
+            p.querySelector(`#${AF_ID}-upgrade-btn`)?.addEventListener("click", () => {
+              chrome.runtime.sendMessage({ type: "OPEN_LOGIN" });
+            });
+            return p;
+          })());
+          return;
+        }
+
         const actionable = fields.filter(f => f.fieldType !== "file");
 
         // Session resume fallback (done before opening sidebar)
