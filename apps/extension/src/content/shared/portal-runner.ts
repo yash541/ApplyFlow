@@ -149,6 +149,7 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
   const { af_enabled } = await chrome.storage.local.get("af_enabled");
   if (af_enabled === false) return;
 
+
   // Support optional confidence-based detection alongside the boolean isJobPage().
   // Existing adapters that only implement isJobPage() continue to work unchanged.
   if (adapter.detectPageConfidence) {
@@ -287,11 +288,21 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
         // When ApplyFlow AI responds, animate the score to the real value.
         chrome.runtime.sendMessage(
           { type: "ANALYZE_JOB", payload: jobData } as ExtensionMessage,
-          (scoreRes: { overall_score?: number; overallScore?: number; score_basis?: string; error?: string } | null) => {
+          (scoreRes: { overall_score?: number; overallScore?: number; score_basis?: string; error?: string; detail?: unknown } | null) => {
             if (chrome.runtime.lastError || runId !== currentRunId) return;
 
-            // Usage limit reached — tell user clearly instead of showing a fake score
-            if (scoreRes?.error === "AUTH_REQUIRED" || (scoreRes as { detail?: { code?: string } } | null)?.detail?.code === "usage_limit_exceeded") {
+            // Not authenticated — show login prompt on score ring instead of random number
+            const detail = scoreRes?.detail;
+            const isAuthError = scoreRes?.error === "AUTH_REQUIRED" ||
+              (typeof detail === "string" && (detail.includes("auth") || detail.includes("token"))) ||
+              (!scoreRes?.overall_score && !scoreRes?.overallScore && !!detail);
+            if (isAuthError) {
+              updateOverlayScore(0, "login_required");
+              return;
+            }
+
+            // Usage limit reached
+            if ((detail as { code?: string })?.code === "usage_limit_exceeded") {
               updateOverlayScore(0, "limit_exceeded");
               showToast("info", "Match score limit reached",
                 "You've used all 10 free scores this month. Upgrade to Pro for unlimited.",
@@ -359,7 +370,7 @@ export function runPortal(adapter: JobPortalAdapter): void {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
 
-    // Auth session cleared → re-render overlay in logged-out state
+    // Auth session cleared → re-render overlay (shows login prompt on score ring)
     if (changes["session"] && !changes["session"].newValue && changes["session"].oldValue) {
       void runInit(adapter);
     }

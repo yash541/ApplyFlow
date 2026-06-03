@@ -66,6 +66,17 @@ function startScoreAnim() {
  *  to the final score, then flashes green to signal completion. */
 export function updateOverlayScore(finalScore: number, scoreBasis: string): void {
   _clearAnim();
+
+  // Login required — stop animation, show key icon + prompt
+  if (scoreBasis === "login_required") {
+    const s = _scoreEl(); const b = _bubbleEl(); const t = _tierEl();
+    if (s) { s.textContent = "🔑"; s.style.fontSize = "18px"; }
+    if (b) b.textContent = "?";
+    if (t) t.textContent = "Log in to see score";
+    _updateArc(0); // empty arc
+    return;
+  }
+
   const isEst = scoreBasis === "title_only";
   let cur      = _animCurrent;
   const step   = finalScore >= cur ? 1 : -1;
@@ -417,10 +428,12 @@ export function injectOverlay(
   const isLoading   = scoreBasis === "loading";
   const isEstimated = scoreBasis === "title_only";
   const isLimited   = scoreBasis === "limit_exceeded";
-  const displayScore = isLoading ? "0" : isLimited ? "🔒" : isEstimated ? `~${matchScore}` : `${matchScore}`;
+  const isLoginReq  = scoreBasis === "login_required";
+  const displayScore = isLoading ? "0" : isLimited ? "🔒" : isLoginReq ? "🔑" : isEstimated ? `~${matchScore}` : `${matchScore}`;
 
   const tierLabel =
-    isLimited ? "Upgrade for scores" :
+    isLimited   ? "Upgrade for scores" :
+    isLoginReq  ? "Log in to see score" :
     matchScore >= 85 ? "🟢 Excellent" :
     matchScore >= 70 ? "🔵 Good" :
     matchScore >= 50 ? "🟡 Fair" : "🔴 Low";
