@@ -5,6 +5,9 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { CheckCircle2, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
+const POLL_INTERVAL_MS = 1200;
+const MAX_POLL_ATTEMPTS = 6; // ~7s total — enough for Stripe webhook to land
+
 export function UpgradeSuccessToast() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -12,20 +15,45 @@ export function UpgradeSuccessToast() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    if (searchParams.get("upgraded") === "true") {
-      setVisible(true);
-      // Invalidate usage cache so UsageBanner hides immediately
-      queryClient.invalidateQueries({ queryKey: ["billing-usage"] });
-      // Remove the query param from the URL without a page reload
+    if (searchParams.get("upgraded") !== "true") return;
+
+    setVisible(true);
+    // Invalidate immediately so any background refetch picks up fresh data
+    queryClient.invalidateQueries({ queryKey: ["billing-usage"] });
+
+    // Poll billing-usage until the plan flips to "pro", THEN remove ?upgraded=true.
+    // Keeping the param in the URL prevents UsageBanner from rendering during
+    // the webhook processing window — avoids the contradictory "limit reached"
+    // banner appearing right next to the "Welcome to Pro!" message.
+    let pollTimer: ReturnType<typeof setTimeout>;
+    let attempts = 0;
+
+    const removeParam = () => {
       const url = new URL(window.location.href);
       url.searchParams.delete("upgraded");
       router.replace(url.pathname + (url.search || ""), { scroll: false });
+    };
 
-      // Auto-dismiss after 6 seconds
-      const t = setTimeout(() => setVisible(false), 6000);
-      return () => clearTimeout(t);
-    }
-  }, [searchParams, router]);
+    const poll = async () => {
+      attempts++;
+      await queryClient.refetchQueries({ queryKey: ["billing-usage"] });
+      const cached = queryClient.getQueryData<{ plan?: string }>(["billing-usage"]);
+      if (cached?.plan === "pro" || attempts >= MAX_POLL_ATTEMPTS) {
+        removeParam();
+      } else {
+        pollTimer = setTimeout(poll, POLL_INTERVAL_MS);
+      }
+    };
+
+    // First check after a short delay — gives the webhook a head start
+    pollTimer = setTimeout(poll, 800);
+
+    const dismiss = setTimeout(() => setVisible(false), 6000);
+    return () => {
+      clearTimeout(pollTimer);
+      clearTimeout(dismiss);
+    };
+  }, [searchParams, router, queryClient]);
 
   if (!visible) return null;
 

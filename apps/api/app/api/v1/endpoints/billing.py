@@ -146,12 +146,17 @@ async def stripe_webhook(
     # ── checkout.session.completed ────────────────────────────────────────────
     if event_type == "checkout.session.completed":
         session_obj = event["data"]["object"]
-        user_id = session_obj.get("metadata", {}).get("user_id")
+        user_id_str = session_obj.get("metadata", {}).get("user_id")
         subscription_id = session_obj.get("subscription")
 
-        if user_id:
+        if user_id_str:
+            try:
+                import uuid as _uuid
+                user_uuid = _uuid.UUID(user_id_str)
+            except ValueError:
+                return {"received": True}
             result = await db.execute(
-                select(User).where(User.id == user_id)
+                select(User).where(User.id == user_uuid)
             )
             user = result.scalar_one_or_none()
             if user:
