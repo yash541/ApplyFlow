@@ -288,21 +288,19 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
         // When ApplyFlow AI responds, animate the score to the real value.
         chrome.runtime.sendMessage(
           { type: "ANALYZE_JOB", payload: jobData } as ExtensionMessage,
-          (scoreRes: { overall_score?: number; overallScore?: number; score_basis?: string; error?: string; detail?: unknown } | null) => {
+          (scoreRes: { overall_score?: number; overallScore?: number; score_basis?: string; error?: string; detail?: unknown; _httpStatus?: number } | null) => {
             if (chrome.runtime.lastError || runId !== currentRunId) return;
 
-            // Not authenticated — show login prompt on score ring instead of random number
-            const detail = scoreRes?.detail;
-            const isAuthError = scoreRes?.error === "AUTH_REQUIRED" ||
-              (typeof detail === "string" && (detail.includes("auth") || detail.includes("token"))) ||
-              (!scoreRes?.overall_score && !scoreRes?.overallScore && !!detail);
-            if (isAuthError) {
+            const status = scoreRes?._httpStatus ?? 200;
+
+            // 401 = genuinely not authenticated → show login prompt
+            if (status === 401) {
               updateOverlayScore(0, "login_required");
               return;
             }
 
-            // Usage limit reached
-            if ((detail as { code?: string })?.code === "usage_limit_exceeded") {
+            // 402 = usage limit reached
+            if (status === 402) {
               updateOverlayScore(0, "limit_exceeded");
               showToast("info", "Match score limit reached",
                 "You've used all 10 free scores this month. Upgrade to Pro for unlimited.",
@@ -313,7 +311,7 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
 
             // Clamp display score: minimum 20 so even no-match jobs don't show "0"
             const rawScore = scoreRes?.overall_score ?? scoreRes?.overallScore ?? 65;
-            resolvedScore = Math.max(20, rawScore);
+            resolvedScore = Math.max(42, rawScore);
             resolvedBasis = scoreRes?.score_basis ?? "full_jd";
 
             // Cache so re-runs of runInit for this URL skip the 0→score animation

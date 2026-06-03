@@ -539,7 +539,9 @@ async function analyzeJob(payload: LinkedInJobData) {
         url: payload.url,
       }),
     });
-    return await res.json();
+    const data = await res.json();
+    // Include HTTP status so portal-runner can distinguish 401 vs 402 vs 500
+    return { ...data, _httpStatus: res.status };
   } catch {
     return { error: "API unavailable" };
   }
