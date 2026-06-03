@@ -311,7 +311,9 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
               return;
             }
 
-            resolvedScore = scoreRes?.overall_score ?? scoreRes?.overallScore ?? Math.floor(Math.random() * 30) + 65;
+            // Clamp display score: minimum 20 so even no-match jobs don't show "0"
+            const rawScore = scoreRes?.overall_score ?? scoreRes?.overallScore ?? 65;
+            resolvedScore = Math.max(20, rawScore);
             resolvedBasis = scoreRes?.score_basis ?? "full_jd";
 
             // Cache so re-runs of runInit for this URL skip the 0→score animation
