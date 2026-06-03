@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { CheckCircle2, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api";
 
-const POLL_INTERVAL_MS = 1200;
-const MAX_POLL_ATTEMPTS = 6; // ~7s total — enough for Stripe webhook to land
+const POLL_INTERVAL_MS = 1500;
+const MAX_POLL_ATTEMPTS = 8; // ~12s total safety net
 
 export function UpgradeSuccessToast() {
   const searchParams = useSearchParams();
@@ -18,21 +19,25 @@ export function UpgradeSuccessToast() {
     if (searchParams.get("upgraded") !== "true") return;
 
     setVisible(true);
-    // Invalidate immediately so any background refetch picks up fresh data
-    queryClient.invalidateQueries({ queryKey: ["billing-usage"] });
-
-    // Poll billing-usage until the plan flips to "pro", THEN remove ?upgraded=true.
-    // Keeping the param in the URL prevents UsageBanner from rendering during
-    // the webhook processing window — avoids the contradictory "limit reached"
-    // banner appearing right next to the "Welcome to Pro!" message.
-    let pollTimer: ReturnType<typeof setTimeout>;
-    let attempts = 0;
 
     const removeParam = () => {
       const url = new URL(window.location.href);
       url.searchParams.delete("upgraded");
       router.replace(url.pathname + (url.search || ""), { scroll: false });
     };
+
+    // Step 1: call /billing/sync-plan immediately — directly verifies with Stripe
+    // and updates the plan in DB without relying on the webhook at all.
+    // This makes the upgrade flow bulletproof even if the webhook fails.
+    api.billing.syncPlan().catch(() => {
+      // sync failed (network, cold start) — fall through to polling below
+    });
+
+    // Step 2: poll billing-usage until plan === "pro", then clean up URL.
+    // ?upgraded=true stays in the URL while polling so UsageBanner stays
+    // hidden — prevents the contradictory "limit reached" banner.
+    let pollTimer: ReturnType<typeof setTimeout>;
+    let attempts = 0;
 
     const poll = async () => {
       attempts++;
@@ -45,10 +50,10 @@ export function UpgradeSuccessToast() {
       }
     };
 
-    // First check after a short delay — gives the webhook a head start
-    pollTimer = setTimeout(poll, 800);
+    // Small initial delay so syncPlan() has time to update DB before first poll
+    pollTimer = setTimeout(poll, 600);
 
-    const dismiss = setTimeout(() => setVisible(false), 6000);
+    const dismiss = setTimeout(() => setVisible(false), 7000);
     return () => {
       clearTimeout(pollTimer);
       clearTimeout(dismiss);
