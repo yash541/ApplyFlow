@@ -397,23 +397,35 @@ export function injectOverlay(
   // If a loading overlay is already on screen, update it in place — no flash/flicker.
   // Only the shimmer content (score-info + actions) is swapped; the container,
   // score ring SVG, and running animation are left untouched.
+  // ── In-place update ───────────────────────────────────────────────────────
+  // If a loading overlay (with shimmer skeletons) is already on screen AND we
+  // have real job data, update only the content sections — never remove/recreate
+  // the overlay DOM. This eliminates the flash between shimmer and real overlay.
+  // Triggers even when scoreBasis = "loading" (score still in-flight) so the
+  // second call in portal-runner (with jobData but still loading score) updates
+  // company/title/actions in place rather than destroying and recreating.
   const loadingOverlay = document.getElementById("applyflow-overlay");
-  if (loadingOverlay && loadingOverlay.querySelector(".af-shimmer") && scoreBasis !== "loading") {
+  const hasRealJobData = !!(jobData.company || jobData.title);
+  if (loadingOverlay && loadingOverlay.querySelector(".af-shimmer") && hasRealJobData) {
+    const isLoading2  = scoreBasis === "loading";
     const isLimited   = scoreBasis === "limit_exceeded";
+    const isLoginReq  = scoreBasis === "login_required";
     const isEstimated = scoreBasis === "title_only";
     const tierLabel =
-      isLimited ? "Upgrade for scores" :
+      isLimited  ? "Upgrade for scores" :
+      isLoginReq ? "Log in to see score" :
+      isLoading2 ? "🔍 Analyzing…" :
       matchScore >= 85 ? "🟢 Excellent" :
       matchScore >= 70 ? "🔵 Good" :
       matchScore >= 50 ? "🟡 Fair" : "🔴 Low";
 
-    // Replace shimmer score-info with real company/title/tier
+    // Replace shimmer score-info with real company/title/tier (fades in)
     const info = loadingOverlay.querySelector<HTMLElement>(".af-score-info");
     if (info) {
       info.innerHTML = `
         <p class="af-company af-content-fade-in">${jobData.company}</p>
         <p class="af-title  af-content-fade-in">${jobData.title}</p>
-        <p class="af-tier   af-content-fade-in">${tierLabel} Match${isEstimated ? " (est.)" : ""}</p>`;
+        <p class="af-tier   af-content-fade-in">${tierLabel}${isEstimated ? " (est.)" : ""}</p>`;
     }
 
     // Replace shimmer action button with real track/advance button
@@ -423,11 +435,10 @@ export function injectOverlay(
         ? buildTrackedSection(existing)
         : `<button class="af-btn-primary af-content-fade-in" id="af-save">+ Track this job</button>`;
       actions.innerHTML = actionsHtml;
-      // Wire the save button — pass score/basis so re-inject after save uses same values
       _wireSaveButton(actions, jobData, fingerprint, onAppSaved, matchScore, scoreBasis);
       if (existing) { _wireAdvanceAndActionListeners(existing, jobData, fingerprint, onAppSaved); }
     }
-    return; // skip full re-inject — overlay stays in place
+    return; // one overlay throughout — no flash
   }
 
   document.getElementById("applyflow-overlay")?.remove();

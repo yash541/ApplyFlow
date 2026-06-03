@@ -315,7 +315,7 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
             resolvedBasis = scoreRes?.score_basis ?? "full_jd";
 
             // Cache so re-runs of runInit for this URL skip the 0→score animation
-            scoreCache.set(jobData.url, { score: resolvedScore, basis: resolvedBasis });
+            scoreCache.set(jobData.url, { score: resolvedScore, basis: resolvedBasis }  );
 
             // Animate the displayed score to the real value
             updateOverlayScore(resolvedScore, resolvedBasis);
