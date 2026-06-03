@@ -66,15 +66,33 @@ function startScoreAnim() {
 export function showProfileNudge(webBase: string): void {
   const tier = _tierEl();
   if (!tier) return;
-  // Don't double-insert
   if (document.querySelector(".af-profile-nudge")) return;
   const nudge = document.createElement("a");
   nudge.className = "af-profile-nudge";
   nudge.href = `${webBase}/profile`;
   nudge.target = "_blank";
   nudge.rel = "noopener";
-  nudge.style.cssText = "display:block;font-size:10px;color:rgba(251,191,36,0.85);margin-top:4px;text-decoration:underline;cursor:pointer;";
-  nudge.textContent = "⚠ Score is estimated — complete your profile";
+  nudge.style.cssText = [
+    "display:inline-flex;align-items:center;gap:5px",
+    "background:rgba(251,191,36,0.10)",
+    "border:1px solid rgba(251,191,36,0.25)",
+    "color:rgba(251,191,36,0.8)",
+    "font-size:11px;font-weight:500",
+    "padding:3px 10px;border-radius:20px",
+    "margin-top:5px;cursor:pointer",
+    "text-decoration:none;letter-spacing:0.02em",
+  ].join(";");
+  nudge.textContent = "✦ Add profile for better scores";
+  nudge.addEventListener("mouseover", () => {
+    nudge.style.background = "rgba(251,191,36,0.18)";
+    nudge.style.borderColor = "rgba(251,191,36,0.45)";
+    nudge.style.color = "rgba(251,191,36,1)";
+  });
+  nudge.addEventListener("mouseout", () => {
+    nudge.style.background = "rgba(251,191,36,0.10)";
+    nudge.style.borderColor = "rgba(251,191,36,0.25)";
+    nudge.style.color = "rgba(251,191,36,0.8)";
+  });
   tier.insertAdjacentElement("afterend", nudge);
 }
 
