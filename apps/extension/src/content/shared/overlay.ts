@@ -73,7 +73,17 @@ export function updateOverlayScore(finalScore: number, scoreBasis: string): void
     if (s) { s.textContent = "🔑"; s.style.fontSize = "18px"; }
     if (b) b.textContent = "?";
     if (t) t.textContent = "Log in to see score";
-    _updateArc(0); // empty arc
+    _updateArc(0);
+    return;
+  }
+
+  // Limit exceeded — stop animation, show lock icon + upgrade prompt
+  if (scoreBasis === "limit_exceeded") {
+    const s = _scoreEl(); const b = _bubbleEl(); const t = _tierEl();
+    if (s) { s.textContent = "🔒"; s.style.fontSize = "18px"; }
+    if (b) b.textContent = "🔒";
+    if (t) t.textContent = "Upgrade for scores";
+    _updateArc(0);
     return;
   }
 
@@ -102,6 +112,9 @@ export function updateOverlayScore(finalScore: number, scoreBasis: string): void
         const tier = finalScore >= 85 ? "🟢 Excellent" : finalScore >= 70 ? "🔵 Good" : finalScore >= 50 ? "🟡 Fair" : "🔴 Low";
         t.textContent = `${tier} Match${isEst ? " (est.)" : ""}`;
       }
+      // Reveal the rematch button now that a real score is displayed
+      const rb = document.querySelector<HTMLElement>(".af-rematch-btn");
+      if (rb) rb.style.display = "";
       return;
     }
     cur += step;
@@ -190,7 +203,21 @@ function loginRequiredToast() {
 
 // ── Loading overlay (appears immediately, no job data yet) ───────────────────
 
-export function injectLoadingOverlay(): void {
+/** Start the count-up animation if the score hasn't resolved yet.
+ *  Used when animation was suppressed (known limit) but the limit is now cleared. */
+export function startCountUp(): void {
+  const el = _scoreEl();
+  if (!el || el.textContent !== "0") return; // score already resolved
+  if (_animTimer || _animCurrent !== 0) return;
+  startScoreAnim();
+}
+
+/**
+ * @param suppressCountUp — pass true when the score limit is already cached;
+ *   skips the count-up animation so the ring stays at 0 until GET_USAGE
+ *   confirms the limit, avoiding the misleading "seeing a score" flash.
+ */
+export function injectLoadingOverlay(suppressCountUp = false): void {
   document.getElementById("applyflow-overlay")?.remove();
   _clearAnim();
   _animCurrent = 0;
@@ -246,8 +273,8 @@ export function injectLoadingOverlay(): void {
   bubble.addEventListener("click", () => { isOpen ? closePanel() : openPanel(); });
   document.getElementById("af-close")?.addEventListener("click", closePanel);
 
-  // Start the count-up animation immediately
-  startScoreAnim();
+  // Start count-up unless suppressed (limit already known → avoid misleading animation)
+  if (!suppressCountUp) startScoreAnim();
 }
 
 /** Populate the loading overlay with real job data (called after scraping).
@@ -306,6 +333,32 @@ export function populateOverlayContent(
 
 // ── Button wiring helpers (reused by in-place update + full inject) ───────────
 
+function _wireRematchBtn(container: Element | Document, onRematch?: () => void): void {
+  const btn = container.querySelector<HTMLButtonElement>(".af-rematch-btn");
+  if (!btn || !onRematch) return;
+  btn.addEventListener("mouseover", () => {
+    btn.style.background = "rgba(99,102,241,0.22)";
+    btn.style.borderColor = "rgba(99,102,241,0.5)";
+    btn.style.color = "rgba(255,255,255,0.95)";
+  });
+  btn.addEventListener("mouseout", () => {
+    btn.style.background = "rgba(99,102,241,0.12)";
+    btn.style.borderColor = "rgba(99,102,241,0.28)";
+    btn.style.color = "rgba(255,255,255,0.65)";
+  });
+  btn.addEventListener("click", () => {
+    if (btn.disabled) return;
+    btn.style.display = "none";
+    // Reset score ring to loading state for re-analysis
+    _clearAnim();
+    _animCurrent = 0;
+    const t = _tierEl();
+    if (t) t.textContent = "🔍 Re-analyzing...";
+    startScoreAnim();
+    onRematch();
+  });
+}
+
 function _wireSaveButton(
   container: HTMLElement,
   jobData: LinkedInJobData,
@@ -313,6 +366,7 @@ function _wireSaveButton(
   onAppSaved: ((id: string) => void) | undefined,
   matchScore: number = 0,
   scoreBasis: string = "full_jd",
+  onRematch?: () => void,
 ): void {
   const saveBtn = container.querySelector<HTMLButtonElement>("#af-save");
   if (!saveBtn) return;
@@ -333,13 +387,17 @@ function _wireSaveButton(
         } else if (res.data?.id) {
           const appId = res.data.id;
           onAppSaved?.(appId);
-          // Re-inject overlay with the tracked state so it shows pipeline + advance button
           const newApp: NonNullable<AppRecord> = {
             id: appId, company: jobData.company, role: jobData.title,
             status: "saved", applied_at: new Date().toISOString(),
             has_resume: false, resume_id: null, ats_score: null, job_url: jobData.url,
           };
-          injectOverlay(matchScore, jobData, newApp, fingerprint, onAppSaved, scoreBasis);
+          // Use the live displayed score at click-time, not the stale wired value.
+          // matchScore is captured at wire-time (often 0/"loading" before AI resolves);
+          // _animCurrent reflects what the user actually sees when they click save.
+          const liveScore = _animCurrent > 0 ? _animCurrent : matchScore;
+          const liveBasis = (scoreBasis === "loading" && liveScore > 0) ? "full_jd" : scoreBasis;
+          injectOverlay(liveScore, jobData, newApp, fingerprint, onAppSaved, liveBasis, onRematch);
         }
       }
     );
@@ -393,6 +451,7 @@ export function injectOverlay(
   fingerprint?: JobFingerprint,
   onAppSaved?: (appId: string) => void,
   scoreBasis: string = "full_jd",
+  onRematch?: () => void,
 ): void {
   // If a loading overlay is already on screen, update it in place — no flash/flicker.
   // Only the shimmer content (score-info + actions) is swapped; the container,
@@ -425,7 +484,9 @@ export function injectOverlay(
       info.innerHTML = `
         <p class="af-company af-content-fade-in">${jobData.company}</p>
         <p class="af-title  af-content-fade-in">${jobData.title}</p>
-        <p class="af-tier   af-content-fade-in">${tierLabel}${isEstimated ? " (est.)" : ""}</p>`;
+        <p class="af-tier   af-content-fade-in">${tierLabel}${isEstimated ? " (est.)" : ""}</p>
+        <button class="af-rematch-btn" style="display:none;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.28);color:rgba(255,255,255,0.65);font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;cursor:pointer;margin-top:5px;letter-spacing:0.02em;">↻ Rematch</button>`;
+      _wireRematchBtn(info, onRematch);
     }
 
     // Replace shimmer action button with real track/advance button
@@ -435,7 +496,7 @@ export function injectOverlay(
         ? buildTrackedSection(existing)
         : `<button class="af-btn-primary af-content-fade-in" id="af-save">+ Track this job</button>`;
       actions.innerHTML = actionsHtml;
-      _wireSaveButton(actions, jobData, fingerprint, onAppSaved, matchScore, scoreBasis);
+      _wireSaveButton(actions, jobData, fingerprint, onAppSaved, matchScore, scoreBasis, onRematch);
       if (existing) { _wireAdvanceAndActionListeners(existing, jobData, fingerprint, onAppSaved); }
     }
     return; // one overlay throughout — no flash
@@ -498,6 +559,7 @@ export function injectOverlay(
           <p class="af-company">${jobData.company}</p>
           <p class="af-title">${jobData.title}</p>
           <p class="af-tier">${tierLabel} Match${tierSuffix}</p>
+          <button class="af-rematch-btn" style="display:${!isLoading && !isLimited && !isLoginReq ? "" : "none"};background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.28);color:rgba(255,255,255,0.65);font-size:11px;font-weight:500;padding:3px 10px;border-radius:20px;cursor:pointer;margin-top:5px;letter-spacing:0.02em;">↻ Rematch</button>
         </div>
       </div>
       <div class="af-actions" id="af-actions">
@@ -511,6 +573,7 @@ export function injectOverlay(
   `;
 
   document.body.appendChild(container);
+  _wireRematchBtn(container, onRematch);
 
   // Start the count-up animation immediately after the overlay is in the DOM
   if (isLoading) startScoreAnim();
@@ -663,12 +726,10 @@ export function injectOverlay(
           ats_score: null,
           job_url: jobData.url,
         };
-        // Notify portal-runner so it can start the submission detector
         if (newAppId) onAppSaved?.(newAppId);
-        // Use _animCurrent (live displayed score) not matchScore (was 0 for loading state)
         const liveScore = _animCurrent > 0 ? _animCurrent : matchScore;
-        const liveBasis = _animCurrent > 0 ? "full_jd" : (scoreBasis || "full_jd");
-        injectOverlay(liveScore, jobData, app, fingerprint, onAppSaved, liveBasis);
+        const liveBasis = (scoreBasis === "loading" && liveScore > 0) ? "full_jd" : (scoreBasis || "full_jd");
+        injectOverlay(liveScore, jobData, app, fingerprint, onAppSaved, liveBasis, onRematch);
       },
     );
   });

@@ -1,6 +1,6 @@
 import type { LinkedInJobData, ExtensionMessage, NotificationType } from "@applyflow/shared";
 import { showToast, clearAllToasts } from "./toast";
-import { injectOverlay, updateOverlayScore, injectLoadingOverlay, type AppRecord } from "./overlay";
+import { injectOverlay, updateOverlayScore, injectLoadingOverlay, startCountUp, type AppRecord } from "./overlay";
 import { waitForStableDOM } from "../runtime/dom-stability";
 import { scrapeWithRetries } from "../runtime/runtime-manager";
 import { buildFingerprint } from "../tracking/fingerprint";
@@ -42,6 +42,82 @@ export interface JobPortalAdapter {
    * implement isJobPage() continue to work with no changes required.
    */
   detectPageConfidence?(): { confidence: number; signals: string[] };
+}
+
+// ── Persistent score cache ────────────────────────────────────────────────────
+// Scores survive page refresh and extension restarts. TTL = 7 days so the
+// user always sees the same number for a job unless they explicitly rematch
+// or the score is more than a week old.
+
+const SCORE_STORE_KEY = "af_score_cache";
+const SCORE_TTL_MS    = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+type PersistedScore = { score: number; basis: string; savedAt: number };
+
+function loadPersistedScore(url: string): Promise<PersistedScore | null> {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(SCORE_STORE_KEY, (r) => {
+      const store = (r[SCORE_STORE_KEY] ?? {}) as Record<string, PersistedScore>;
+      const entry = store[url];
+      if (!entry) { resolve(null); return; }
+      if (Date.now() - entry.savedAt > SCORE_TTL_MS) {
+        delete store[url];
+        chrome.storage.local.set({ [SCORE_STORE_KEY]: store });
+        resolve(null);
+        return;
+      }
+      resolve(entry);
+    });
+  });
+}
+
+function persistScore(url: string, score: number, basis: string): void {
+  chrome.storage.local.get(SCORE_STORE_KEY, (r) => {
+    const store = (r[SCORE_STORE_KEY] ?? {}) as Record<string, PersistedScore>;
+    store[url] = { score, basis, savedAt: Date.now() };
+    chrome.storage.local.set({ [SCORE_STORE_KEY]: store });
+  });
+}
+
+function evictPersistedScore(url: string): void {
+  chrome.storage.local.get(SCORE_STORE_KEY, (r) => {
+    const store = (r[SCORE_STORE_KEY] ?? {}) as Record<string, PersistedScore>;
+    if (url in store) {
+      delete store[url];
+      chrome.storage.local.set({ [SCORE_STORE_KEY]: store });
+    }
+  });
+}
+
+// ── Score-limit state cache ───────────────────────────────────────────────────
+// When the free-tier limit is hit, persist a flag so the NEXT overlay can skip
+// the count-up animation and show 🔒 from the start — no misleading numbers.
+// TTL = 35 days (one billing cycle + buffer). Cleared immediately on Pro upgrade.
+
+const SCORE_LIMIT_KEY = "af_score_limit";
+const SCORE_LIMIT_TTL = 35 * 24 * 60 * 60 * 1000;
+
+function isScoreLimitCached(): Promise<boolean> {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(SCORE_LIMIT_KEY, (r) => {
+      const entry = r[SCORE_LIMIT_KEY] as { savedAt: number } | undefined;
+      if (!entry) { resolve(false); return; }
+      if (Date.now() - entry.savedAt > SCORE_LIMIT_TTL) {
+        chrome.storage.local.remove(SCORE_LIMIT_KEY);
+        resolve(false);
+        return;
+      }
+      resolve(true);
+    });
+  });
+}
+
+function setScoreLimitCached(): void {
+  chrome.storage.local.set({ [SCORE_LIMIT_KEY]: { savedAt: Date.now() } });
+}
+
+function clearScoreLimitCache(): void {
+  chrome.storage.local.remove(SCORE_LIMIT_KEY);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -179,11 +255,17 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
   flushPendingToast();
 
   runtimeState.transition(RuntimeState.STABILIZING);
-  await waitForStableDOM({ stableWindow: 600, timeout: 5000 });
+  // Run both in parallel — isScoreLimitCached is a local storage read (~0ms)
+  // so it always resolves before waitForStableDOM finishes. Zero added latency.
+  const [, limitAlreadyKnown] = await Promise.all([
+    waitForStableDOM({ stableWindow: 600, timeout: 5000 }),
+    isScoreLimitCached(),
+  ]);
   if (runId !== currentRunId) return;
 
-  // ── Show loading overlay immediately — user sees it while scraping runs ──
-  if (runId === currentRunId) injectLoadingOverlay();
+  // Suppress the count-up animation when we already know the limit is exceeded —
+  // prevents the user from seeing numbers tick up before 🔒 appears.
+  if (runId === currentRunId) injectLoadingOverlay(limitAlreadyKnown);
 
   runtimeState.transition(RuntimeState.EXTRACTING);
   // Retry up to 3 times (1s, 2s backoff) — handles portals where the first
@@ -262,12 +344,16 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
         };
 
         // ── Phase 1: inject overlay IMMEDIATELY ───────────────────────────────
-        // Reuse cached score if runInit re-fired for the same URL (SPA noise, post-save).
-        // Otherwise start at 0 with animation.
+        // onRematch is a stable function ref created before injectOverlay so it
+        // can be passed in right away — the actual handler is assigned below once
+        // the async Phase 2 setup completes.
+        const onRematchRef: { fn?: () => void } = {};
+        const onRematch = () => onRematchRef.fn?.();
+
         const cached   = scoreCache.get(jobData.url);
         const initScore = cached?.score ?? 0;
         const initBasis = cached?.basis ?? "loading";
-        injectOverlay(initScore, jobData, existing ?? null, fingerprint, onAppSaved, initBasis);
+        injectOverlay(initScore, jobData, existing ?? null, fingerprint, onAppSaved, initBasis, onRematch);
         if (cached) updateOverlayScore(cached.score, cached.basis);
         runtimeState.transition(existing?.id ? RuntimeState.TRACKING : RuntimeState.READY);
         track("overlay_injected", { portal, score: initScore, scoreBasis: initBasis, hasExisting: !!existing?.id });
@@ -284,53 +370,95 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
           attachDetector(existing.id, jobData.company, jobData.title);
         }
 
-        // ── Phase 2: fetch real score in background ────────────────────────────
-        // When ApplyFlow AI responds, animate the score to the real value.
-        chrome.runtime.sendMessage(
-          { type: "ANALYZE_JOB", payload: jobData } as ExtensionMessage,
-          (scoreRes: { overall_score?: number; overallScore?: number; score_basis?: string; error?: string; detail?: unknown; _httpStatus?: number } | null) => {
-            if (chrome.runtime.lastError || runId !== currentRunId) return;
+        // ── Phase 2: score resolution ─────────────────────────────────────────
+        // Order: persistent cache → (if miss) GET_USAGE + ANALYZE_JOB in parallel.
+        // Rematch bypasses cache and limit pre-check, going straight to ANALYZE_JOB.
 
-            const status = scoreRes?._httpStatus ?? 200;
+        let scoreLocked = false;
 
-            // 401 = genuinely not authenticated → show login prompt
-            if (status === 401) {
-              updateOverlayScore(0, "login_required");
-              return;
-            }
+        function showLimitExceeded() {
+          scoreLocked = true;
+          setScoreLimitCached(); // next overlay skips animation, shows 🔒 immediately
+          updateOverlayScore(0, "limit_exceeded");
+          showToast("info", "Match score limit reached",
+            "You've used all 10 free scores this month. Upgrade to Pro for unlimited.",
+            { label: "Upgrade →", onClick: () => chrome.runtime.sendMessage({ type: "OPEN_LOGIN" }) },
+            8000);
+        }
 
-            // 402 = usage limit reached
-            if (status === 402) {
-              updateOverlayScore(0, "limit_exceeded");
-              showToast("info", "Match score limit reached",
-                "You've used all 10 free scores this month. Upgrade to Pro for unlimited.",
-                { label: "Upgrade →", onClick: () => chrome.runtime.sendMessage({ type: "OPEN_LOGIN" }) },
-                8000);
-              return;
-            }
+        function applyResolvedScore(score: number, basis: string, isRematch: boolean) {
+          resolvedScore = score;
+          resolvedBasis = basis;
+          persistScore(jobData.url, resolvedScore, resolvedBasis);
+          scoreCache.set(jobData.url, { score: resolvedScore, basis: resolvedBasis });
+          updateOverlayScore(resolvedScore, resolvedBasis);
+          track("score_resolved", { portal, score: resolvedScore, basis: resolvedBasis, rematch: isRematch });
+          if (!isRematch && existing?.id) {
+            chrome.runtime.sendMessage({
+              type: "RECORD_OBSERVATION",
+              payload: { applicationId: existing.id, extractionMethod, portal, isLive: true,
+                         signals: { score: resolvedScore, attempts: result!.attempts } },
+            } as ExtensionMessage);
+          }
+        }
 
-            // Clamp display score: minimum 20 so even no-match jobs don't show "0"
-            const rawScore = scoreRes?.overall_score ?? scoreRes?.overallScore ?? 65;
-            resolvedScore = Math.max(42, rawScore);
-            resolvedBasis = scoreRes?.score_basis ?? "full_jd";
+        // Rematch: user-triggered re-score — clears cache, skips limit pre-check
+        onRematchRef.fn = () => {
+          scoreLocked = false;
+          evictPersistedScore(jobData.url);
+          scoreCache.delete(jobData.url);
+          chrome.runtime.sendMessage(
+            { type: "ANALYZE_JOB", payload: jobData } as ExtensionMessage,
+            (scoreRes: { overall_score?: number; overallScore?: number; score_basis?: string; error?: string; detail?: unknown; _httpStatus?: number } | null) => {
+              if (chrome.runtime.lastError || runId !== currentRunId) return;
+              const status = scoreRes?._httpStatus ?? 200;
+              if (status === 401) { updateOverlayScore(0, "login_required"); return; }
+              if (status === 402) { showLimitExceeded(); return; }
+              const raw = scoreRes?.overall_score ?? scoreRes?.overallScore ?? 65;
+              applyResolvedScore(Math.max(42, raw), scoreRes?.score_basis ?? "full_jd", true);
+            },
+          );
+        };
 
-            // Cache so re-runs of runInit for this URL skip the 0→score animation
-            scoreCache.set(jobData.url, { score: resolvedScore, basis: resolvedBasis }  );
+        // Persistent cache check — serve instantly, no AI call needed
+        void loadPersistedScore(jobData.url).then((persisted) => {
+          if (persisted && runId === currentRunId) {
+            applyResolvedScore(persisted.score, persisted.basis, false);
+            return;
+          }
+          if (runId !== currentRunId) return;
 
-            // Animate the displayed score to the real value
-            updateOverlayScore(resolvedScore, resolvedBasis);
-            track("score_resolved", { portal, score: resolvedScore, basis: resolvedBasis });
+          // Cache miss — GET_USAGE and ANALYZE_JOB fire in parallel
+          chrome.runtime.sendMessage(
+            { type: "GET_USAGE" },
+            (usage: { plan?: string; score_used?: number; score_limit?: number | null } | null) => {
+              if (chrome.runtime.lastError || runId !== currentRunId || scoreLocked) return;
+              // Clear the limit flag immediately if the user has upgraded to Pro
+              if (usage?.plan === "pro") clearScoreLimitCache();
+              const isFreePlan = !usage || usage.plan !== "pro";
+              const limitHit = isFreePlan && usage?.score_limit != null && (usage.score_used ?? 0) >= usage.score_limit;
+              if (limitHit) {
+                showLimitExceeded();
+              } else if (limitAlreadyKnown) {
+                // Flag was cached but limit is no longer active (user upgraded or flag was stale).
+                // Start the animation that was suppressed so the ring feels alive.
+                startCountUp();
+              }
+            },
+          );
 
-            // Record observation now that we have the real score
-            if (existing?.id) {
-              chrome.runtime.sendMessage({
-                type: "RECORD_OBSERVATION",
-                payload: { applicationId: existing.id, extractionMethod, portal, isLive: true,
-                           signals: { score: resolvedScore, attempts: result!.attempts } },
-              } as ExtensionMessage);
-            }
-          },
-        );
+          chrome.runtime.sendMessage(
+            { type: "ANALYZE_JOB", payload: jobData } as ExtensionMessage,
+            (scoreRes: { overall_score?: number; overallScore?: number; score_basis?: string; error?: string; detail?: unknown; _httpStatus?: number } | null) => {
+              if (chrome.runtime.lastError || runId !== currentRunId || scoreLocked) return;
+              const status = scoreRes?._httpStatus ?? 200;
+              if (status === 401) { updateOverlayScore(0, "login_required"); return; }
+              if (status === 402) { showLimitExceeded(); return; }
+              const raw = scoreRes?.overall_score ?? scoreRes?.overallScore ?? 65;
+              applyResolvedScore(Math.max(42, raw), scoreRes?.score_basis ?? "full_jd", false);
+            },
+          );
+        });
 
             // Overlay guard: some SPA portals (LinkedIn, Glassdoor) re-render
             // their job panel and silently remove injected DOM nodes. If our
@@ -346,7 +474,7 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
               if (!document.getElementById("applyflow-overlay")) {
                 guardObserver.disconnect();
                 track("overlay_reinjected", { portal });
-                injectOverlay(resolvedScore, jobData, currentExisting, fingerprint, onAppSaved, resolvedBasis === "loading" ? "loading" : resolvedBasis);
+                injectOverlay(resolvedScore, jobData, currentExisting, fingerprint, onAppSaved, resolvedBasis === "loading" ? "loading" : resolvedBasis, onRematch);
               }
             });
             guardObserver.observe(document.body, { childList: true });
@@ -370,8 +498,18 @@ export function runPortal(adapter: JobPortalAdapter): void {
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
 
-    // Auth session cleared → re-render overlay (shows login prompt on score ring)
+    // Auth session cleared (logout) → clear limit cache and re-render.
+    // The limit flag is per-account — it must not persist across logout because
+    // the next user on this browser may be on a different plan or have no limit.
     if (changes["session"] && !changes["session"].newValue && changes["session"].oldValue) {
+      clearScoreLimitCache();
+      void runInit(adapter);
+    }
+
+    // Auth session set (login) → also clear limit cache so the fresh GET_USAGE
+    // call re-evaluates the actual state for this account, then re-render.
+    if (changes["session"] && changes["session"].newValue && !changes["session"].oldValue) {
+      clearScoreLimitCache();
       void runInit(adapter);
     }
 
