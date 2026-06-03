@@ -1,6 +1,6 @@
 import type { LinkedInJobData, ExtensionMessage, NotificationType } from "@applyflow/shared";
 import { showToast, clearAllToasts } from "./toast";
-import { injectOverlay, updateOverlayScore, injectLoadingOverlay, startCountUp, type AppRecord } from "./overlay";
+import { injectOverlay, updateOverlayScore, injectLoadingOverlay, startCountUp, showProfileNudge, type AppRecord } from "./overlay";
 import { waitForStableDOM } from "../runtime/dom-stability";
 import { scrapeWithRetries } from "../runtime/runtime-manager";
 import { buildFingerprint } from "../tracking/fingerprint";
@@ -386,12 +386,13 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
             8000);
         }
 
-        function applyResolvedScore(score: number, basis: string, isRematch: boolean) {
+        function applyResolvedScore(score: number, basis: string, isRematch: boolean, profileComplete = true) {
           resolvedScore = score;
           resolvedBasis = basis;
           persistScore(jobData.url, resolvedScore, resolvedBasis);
           scoreCache.set(jobData.url, { score: resolvedScore, basis: resolvedBasis });
           updateOverlayScore(resolvedScore, resolvedBasis);
+          if (!profileComplete) showProfileNudge(import.meta.env.VITE_WEB_BASE ?? "https://apply-flow-web.vercel.app");
           track("score_resolved", { portal, score: resolvedScore, basis: resolvedBasis, rematch: isRematch });
           if (!isRematch && existing?.id) {
             chrome.runtime.sendMessage({
@@ -415,7 +416,7 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
               if (status === 401) { updateOverlayScore(0, "login_required"); return; }
               if (status === 402) { showLimitExceeded(); return; }
               const raw = scoreRes?.overall_score ?? scoreRes?.overallScore ?? 65;
-              applyResolvedScore(Math.max(42, raw), scoreRes?.score_basis ?? "full_jd", true);
+              applyResolvedScore(Math.max(42, raw), scoreRes?.score_basis ?? "full_jd", true, scoreRes?.profile_complete !== false);
             },
           );
         };
@@ -455,7 +456,7 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
               if (status === 401) { updateOverlayScore(0, "login_required"); return; }
               if (status === 402) { showLimitExceeded(); return; }
               const raw = scoreRes?.overall_score ?? scoreRes?.overallScore ?? 65;
-              applyResolvedScore(Math.max(42, raw), scoreRes?.score_basis ?? "full_jd", false);
+              applyResolvedScore(Math.max(42, raw), scoreRes?.score_basis ?? "full_jd", false, scoreRes?.profile_complete !== false);
             },
           );
         });

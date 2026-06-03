@@ -35,6 +35,7 @@ class MatchResponse(BaseModel):
     matching_keywords: list[str]
     score_basis: str = "full_jd"   # "full_jd" | "title_only"
     reasoning: str = ""
+    profile_complete: bool = True  # False when profile has no skills/experience
 
 
 class TailorRequest(BaseModel):
@@ -114,6 +115,7 @@ async def match_job(
     has_jd    = len(request.description.strip()) > 150
     jd_block  = request.description[:2000] if has_jd else ""
     basis     = "full_jd" if has_jd else "title_only"
+    profile_complete = bool(profile_data.get("skills") or profile_data.get("experience"))
 
     if has_jd:
         prompt = f"""You are a technical recruiter scoring a candidate's fit for a job.
@@ -192,6 +194,7 @@ Return ONLY valid JSON:
             missing_keywords=data.get("missing_skills", [])[:10],
             score_basis=basis,
             reasoning=str(data.get("reasoning", ""))[:200],
+            profile_complete=profile_complete,
         )
     except Exception as exc:
         # Fallback — never block the page load

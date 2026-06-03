@@ -62,6 +62,22 @@ function startScoreAnim() {
   }, 30); // 1 per 30ms → 0→55 in ~1.65s
 }
 
+/** Show a one-line nudge below the tier label when the profile has no data. */
+export function showProfileNudge(webBase: string): void {
+  const tier = _tierEl();
+  if (!tier) return;
+  // Don't double-insert
+  if (document.querySelector(".af-profile-nudge")) return;
+  const nudge = document.createElement("a");
+  nudge.className = "af-profile-nudge";
+  nudge.href = `${webBase}/profile`;
+  nudge.target = "_blank";
+  nudge.rel = "noopener";
+  nudge.style.cssText = "display:block;font-size:10px;color:rgba(251,191,36,0.85);margin-top:4px;text-decoration:underline;cursor:pointer;";
+  nudge.textContent = "⚠ Score is estimated — complete your profile";
+  tier.insertAdjacentElement("afterend", nudge);
+}
+
 /** Called when the real score arrives — counts from the current animated value
  *  to the final score, then flashes green to signal completion. */
 export function updateOverlayScore(finalScore: number, scoreBasis: string): void {
