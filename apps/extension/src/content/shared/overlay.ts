@@ -311,6 +311,8 @@ function _wireSaveButton(
   jobData: LinkedInJobData,
   fingerprint: JobFingerprint | undefined,
   onAppSaved: ((id: string) => void) | undefined,
+  matchScore: number = 0,
+  scoreBasis: string = "full_jd",
 ): void {
   const saveBtn = container.querySelector<HTMLButtonElement>("#af-save");
   if (!saveBtn) return;
@@ -329,7 +331,15 @@ function _wireSaveButton(
           if (!res || res.error === "AUTH_REQUIRED") loginRequiredToast();
           else showToast("error", "Tracking failed", res?.error ?? "Could not save this job.");
         } else if (res.data?.id) {
-          onAppSaved?.(res.data.id);
+          const appId = res.data.id;
+          onAppSaved?.(appId);
+          // Re-inject overlay with the tracked state so it shows pipeline + advance button
+          const newApp: NonNullable<AppRecord> = {
+            id: appId, company: jobData.company, role: jobData.title,
+            status: "saved", applied_at: new Date().toISOString(),
+            has_resume: false, resume_id: null, ats_score: null, job_url: jobData.url,
+          };
+          injectOverlay(matchScore, jobData, newApp, fingerprint, onAppSaved, scoreBasis);
         }
       }
     );
@@ -413,8 +423,8 @@ export function injectOverlay(
         ? buildTrackedSection(existing)
         : `<button class="af-btn-primary af-content-fade-in" id="af-save">+ Track this job</button>`;
       actions.innerHTML = actionsHtml;
-      // Wire the save button
-      _wireSaveButton(actions, jobData, fingerprint, onAppSaved);
+      // Wire the save button — pass score/basis so re-inject after save uses same values
+      _wireSaveButton(actions, jobData, fingerprint, onAppSaved, matchScore, scoreBasis);
       if (existing) { _wireAdvanceAndActionListeners(existing, jobData, fingerprint, onAppSaved); }
     }
     return; // skip full re-inject — overlay stays in place
