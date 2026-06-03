@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Zap, Check, ExternalLink, RefreshCw } from "lucide-react";
+import { Zap, Check, ExternalLink, RefreshCw, RefreshCcw } from "lucide-react";
 import { api, UsageData } from "@/lib/api";
 import { UpgradeModal } from "@/components/shared/UpgradeModal";
 
@@ -58,8 +58,10 @@ export function BillingSettings() {
   const [usage, setUsage] = useState<UsageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [portalLoading, setPortalLoading] = useState(false);
+  const [syncLoading, setSyncLoading] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
   useEffect(() => {
     api.billing
@@ -68,6 +70,28 @@ export function BillingSettings() {
       .catch(() => setError("Failed to load usage data."))
       .finally(() => setLoading(false));
   }, []);
+
+  async function handleSync() {
+    setSyncLoading(true);
+    setSyncMsg(null);
+    setError(null);
+    try {
+      const result = await api.billing.syncPlan();
+      if (result.plan === "pro") {
+        setSyncMsg("Plan updated to Pro! Refreshing…");
+        setTimeout(() => window.location.reload(), 1200);
+      } else {
+        setSyncMsg("No active Pro subscription found in Stripe.");
+      }
+      // Re-fetch usage to reflect updated plan
+      const updated = await api.billing.getUsage();
+      setUsage(updated);
+    } catch {
+      setError("Could not sync with Stripe. Try again in a moment.");
+    } finally {
+      setSyncLoading(false);
+    }
+  }
 
   async function handlePortal() {
     setPortalLoading(true);
@@ -144,6 +168,23 @@ export function BillingSettings() {
 
         {error && (
           <p className="text-label-sm text-red-400">{error}</p>
+        )}
+
+        {/* Sync fallback — shown when user paid but plan didn't update (webhook miss) */}
+        {!loading && !isPro && (
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleSync}
+              disabled={syncLoading}
+              className="flex items-center gap-1.5 text-label-sm text-on-surface-variant/60 hover:text-on-surface-variant transition-colors disabled:opacity-40"
+            >
+              <RefreshCcw className={`h-3.5 w-3.5 ${syncLoading ? "animate-spin" : ""}`} />
+              Already upgraded? Sync plan
+            </button>
+            {syncMsg && (
+              <span className="text-label-sm text-emerald-400">{syncMsg}</span>
+            )}
+          </div>
         )}
 
         {/* Usage meters */}

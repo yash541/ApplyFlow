@@ -258,6 +258,9 @@ export const api = {
 
     createPortal: () =>
       request<{ url: string }>("/api/v1/billing/portal", { method: "POST" }),
+
+    syncPlan: () =>
+      request<{ plan: string; synced: boolean }>("/api/v1/billing/sync-plan", { method: "POST" }),
   },
 
   jobs: {

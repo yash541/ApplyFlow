@@ -116,6 +116,44 @@ async def create_portal_session(
     return PortalResponse(url=session.url)
 
 
+@router.post("/sync-plan")
+async def sync_plan(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Manually sync the user's plan from Stripe.
+
+    Looks up the user's active subscriptions in Stripe and updates the DB.
+    Safe to call at any time — idempotent. Useful when a webhook was missed.
+    """
+    _ensure_stripe()
+
+    if not current_user.stripe_customer_id:
+        return {"plan": current_user.plan, "synced": False, "reason": "no_stripe_customer"}
+
+    # Fetch all active/trialing subscriptions for this customer
+    subs = stripe.Subscription.list(
+        customer=current_user.stripe_customer_id,
+        status="all",
+        limit=10,
+    )
+
+    active = next(
+        (s for s in subs.auto_paging_iter()
+         if s.status in ("active", "trialing")),
+        None,
+    )
+
+    new_plan = "pro" if active else "free"
+    if current_user.plan != new_plan:
+        current_user.plan = new_plan
+        if active:
+            current_user.stripe_subscription_id = active.id
+        await db.commit()
+
+    return {"plan": new_plan, "synced": current_user.plan != new_plan or True}
+
+
 @router.post("/webhook")
 async def stripe_webhook(
     request: Request,
