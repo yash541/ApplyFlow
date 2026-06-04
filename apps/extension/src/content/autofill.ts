@@ -539,16 +539,17 @@ function renderReviewSidebar(
     // Decide textarea vs input from the question label, not the current (possibly empty) value
     const isLong = !!(item.label.match(/summary|about|cover letter|tell us|introduce|convey|comment|additional|description/i));
     const isFile = item.kind === "resume_file";
+    const hasResumeToAttach = isFile && !!resumeId;
+    // "Upload resume" field: ApplyFlow is attaching it → brand badge.
+    // All other fields (including resume filename text inputs) keep their AI/Profile/Manual badge.
     const sourceBadge =
-      isFile && item.source !== "none"
-                              ? `<span class="af-badge af-badge-rules">⚡ ApplyFlow</span>` :
-      item.source === "ai"    ? `<span class="af-badge af-badge-ai">AI</span>` :
-      item.source === "rules" ? `<span class="af-badge af-badge-rules">Profile</span>` :
-                                `<span class="af-badge af-badge-none">Manual</span>`;
+      isFile && hasResumeToAttach ? `<span class="af-badge af-badge-rules">⚡ ApplyFlow</span>` :
+      item.source === "ai"        ? `<span class="af-badge af-badge-ai">AI</span>` :
+      item.source === "rules"     ? `<span class="af-badge af-badge-rules">Profile</span>` :
+                                    `<span class="af-badge af-badge-none">Manual</span>`;
     const regenBtn = (item.source === "ai" || item.source === "none") && !isFile
       ? `<button class="af-regen-btn" data-uid="${item.uid}" title="Regenerate with AI">↺</button>`
       : "";
-    const hasResumeToAttach = isFile && !!resumeId;
     const inputEl = isFile
       ? hasResumeToAttach
         ? `<div class="af-review-file-note">📎 ${resumeName ?? "Tailored resume"} — will be attached automatically</div>`
@@ -1092,12 +1093,9 @@ function applyAnswerToSidebar(answer: SmartAnswer) {
     input.dataset["aiValue"] = value; // original AI answer — compared at fill time
   }
 
-  // Swap badge: Manual → AI (with confidence tint).
-  // File fields keep their "⚡ ApplyFlow" badge — never overwrite with "AI".
-  const isFileLine = itemEl.dataset["source"] === "resume_file"
-    || !!itemEl.querySelector(".af-review-file-note");
+  // Swap badge: Manual → AI (with confidence tint)
   const badge = itemEl.querySelector<HTMLElement>(".af-badge-none, .af-badge-unknown");
-  if (badge && !isFileLine) {
+  if (badge) {
     const cls = confidence === "high" ? "af-badge-rules" : "af-badge-ai";
     badge.className = `af-badge ${cls}`;
     badge.textContent = confidence === "high" ? "AI ✓" : "AI";
