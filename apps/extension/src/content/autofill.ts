@@ -567,6 +567,24 @@ function renderReviewSidebar(
 
   const hasResume = !!resumeId;
 
+  const emptyProfileBanner = withValue === 0 && items.length > 0 ? `
+    <div style="
+      display:flex;align-items:flex-start;gap:10px;
+      margin:0 16px 4px;padding:10px 12px;
+      background:rgba(251,191,36,0.08);
+      border:1px solid rgba(251,191,36,0.22);
+      border-radius:10px;font-size:12px;line-height:1.45;
+    ">
+      <span style="font-size:14px;margin-top:1px;flex-shrink:0;">⚠</span>
+      <span style="color:rgba(255,255,255,0.75);">
+        Your profile is empty — ApplyFlow needs your information to fill these fields.
+        <a href="${WEB_BASE}/profile" target="_blank" rel="noopener"
+           style="color:rgba(251,191,36,0.9);text-decoration:none;font-weight:600;margin-left:4px;white-space:nowrap;">
+          Complete profile →
+        </a>
+      </span>
+    </div>` : "";
+
   panel.innerHTML = `
     <div class="af-header">
       <div>
@@ -576,6 +594,7 @@ function renderReviewSidebar(
       </div>
       <span class="af-x">✕</span>
     </div>
+    ${emptyProfileBanner}
     <div class="af-field-list">${rows}</div>
     <div class="af-footer">
       <div class="af-footer-row">
