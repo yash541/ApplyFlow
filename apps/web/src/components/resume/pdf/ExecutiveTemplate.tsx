@@ -13,9 +13,10 @@ export function ExecutiveTemplate({ content, accentColor, fontStyle, compact, la
   const headerPad = compact
     ? "20pt 32pt 14pt 32pt"
     : `${Math.round(28 * m)}pt ${Math.round(40 * m)}pt ${Math.round(20 * m)}pt ${Math.round(40 * m)}pt`;
-  const bodyPad = compact
-    ? "16pt 32pt 12pt 32pt"   // reduce bottom from 32→12 in compact to avoid blank page 2
-    : `${Math.round(22 * m)}pt ${Math.round(40 * m)}pt ${Math.round(40 * m)}pt ${Math.round(40 * m)}pt`;
+  // bodyTop is moved to <Page paddingTop> so it re-applies on continuation pages
+  const bodyTop    = compact ? 16 : Math.round(22 * m);
+  const bodySide   = compact ? 32 : Math.round(40 * m);
+  const bodyBottom = compact ? 12 : Math.round(40 * m);
 
   const bodyOrder = sectionOrder.filter(id => id === "summary" || id === "experience" || id.startsWith("custom_"));
   const showEdu = sectionOrder.includes("education") && content.education.length > 0;
@@ -87,7 +88,7 @@ export function ExecutiveTemplate({ content, accentColor, fontStyle, compact, la
 
   return (
     <Document>
-      <Page size="A4" style={{ padding: 0, fontFamily: ff(), fontSize: c.fs, color: "#1a1a2e" }}>
+      <Page size="A4" style={{ padding: 0, paddingTop: bodyTop, fontFamily: ff(), fontSize: c.fs, color: "#1a1a2e" }}>
         <View style={{ backgroundColor: accentColor, padding: headerPad }}>
           <Text style={{ fontSize: compact ? 20 : 24, fontFamily: ff(true), color: "#fff", marginBottom: 2 }}>
             {content.name || "Your Name"}
@@ -100,7 +101,7 @@ export function ExecutiveTemplate({ content, accentColor, fontStyle, compact, la
           <ContactLinks contact={content.contact} textStyle={{ fontSize: c.fsTiny, color: "rgba(255,255,255,0.70)" }} accentColor="rgba(255,255,255,0.95)" />
         </View>
 
-        <View style={{ padding: bodyPad }}>
+        <View style={{ paddingLeft: bodySide, paddingRight: bodySide, paddingBottom: bodyBottom }}>
           {bodyOrder.map(id => {
             if (id in bodySections) return bodySections[id] || null;
             const custom = content.customSections?.find(s => s.id === id);

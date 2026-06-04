@@ -35,10 +35,11 @@ export function CustomSectionBlock({
 }: Props) {
   if (section.items.length === 0) return null;
   return (
-    <View style={{ marginBottom: secGap }}>
+    <View>
       <>
-        {/* Heading + first entry grouped — prevents orphaned heading */}
-        <View wrap={false}>
+        {/* Heading + first entry grouped — prevents orphaned heading.
+            marginTop (not marginBottom on outer) so spacing re-applies on page 2. */}
+        <View wrap={false} style={{ marginTop: secGap }}>
           {headerBorder ? (
             <View style={headerBorder}>
               <Text style={{ ...headerStyle, marginBottom: 3 }}>{section.label}</Text>
@@ -46,7 +47,7 @@ export function CustomSectionBlock({
           ) : (
             <Text style={{ ...headerStyle, marginBottom: headerGap }}>{section.label}</Text>
           )}
-          <View style={{ marginBottom: itemGap }}>
+          <View style={{ marginBottom: section.items.length === 1 ? 0 : itemGap }}>
             <View style={{ flexDirection: "row", marginBottom: 1 }}>
               <Text style={{ flex: 1, ...titleStyle, minWidth: 0 }}>{section.items[0]!.title}</Text>
               {section.items[0]!.subtitle ? <Text style={{ ...subtitleStyle, flexShrink: 0 }}>{section.items[0]!.subtitle}</Text> : null}
@@ -60,8 +61,8 @@ export function CustomSectionBlock({
           </View>
         </View>
         {/* Remaining entries — each stays whole, can flow across pages */}
-        {section.items.slice(1).map((item, i) => (
-          <View key={i + 1} wrap={false} style={{ marginBottom: itemGap }}>
+        {section.items.slice(1).map((item, i, arr) => (
+          <View key={i + 1} wrap={false} style={{ marginBottom: i === arr.length - 1 ? 0 : itemGap }}>
             <View style={{ flexDirection: "row", marginBottom: 1 }}>
               <Text style={{ flex: 1, ...titleStyle, minWidth: 0 }}>{item.title}</Text>
               {item.subtitle ? <Text style={{ ...subtitleStyle, flexShrink: 0 }}>{item.subtitle}</Text> : null}

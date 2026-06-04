@@ -40,8 +40,8 @@ export function ModernTemplate({ content, accentColor, fontStyle, compact, layou
   function renderSidebarSection(id: string) {
     if (id === "skills" && flattenSkills(content).length > 0) {
       return (
-        <View key={id} style={{ marginBottom: sidebarGap }}>
-          <Text style={sidebarLabel}>{getSectionLabel("skills", content)}</Text>
+        <View key={id}>
+          <Text style={{ ...sidebarLabel, marginTop: sidebarGap }}>{getSectionLabel("skills", content)}</Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
             {flattenSkills(content).map((skill, i) => (
               <View key={i} style={{ backgroundColor: "rgba(255,255,255,0.08)", borderRadius: 3, paddingLeft: 4, paddingRight: 4, paddingTop: 2, paddingBottom: 2, marginRight: 3, marginBottom: 3 }}>
@@ -55,8 +55,8 @@ export function ModernTemplate({ content, accentColor, fontStyle, compact, layou
 
     if (id === "education" && content.education.length > 0) {
       return (
-        <View key={id} style={{ marginBottom: sidebarGap }}>
-          <Text style={sidebarLabel}>{getSectionLabel("education", content)}</Text>
+        <View key={id}>
+          <Text style={{ ...sidebarLabel, marginTop: sidebarGap }}>{getSectionLabel("education", content)}</Text>
           {content.education.map((edu, i) => (
             <View key={i} style={{ marginBottom: 6 }}>
               <Text style={{ fontSize: c.fsSmall - 0.5, fontFamily: ff(true), color: "#fff" }}>{edu.degree}</Text>
@@ -70,8 +70,8 @@ export function ModernTemplate({ content, accentColor, fontStyle, compact, layou
 
     if (id === "summary" && content.summary) {
       return (
-        <View key={id} style={{ marginBottom: sidebarGap }}>
-          <Text style={sidebarLabel}>{getSectionLabel("summary", content)}</Text>
+        <View key={id}>
+          <Text style={{ ...sidebarLabel, marginTop: sidebarGap }}>{getSectionLabel("summary", content)}</Text>
           <RichText style={{ fontSize: c.fsTiny, color: "#cbd5e1" }} accentColor="#93c5fd">{content.summary}</RichText>
         </View>
       );
@@ -79,8 +79,8 @@ export function ModernTemplate({ content, accentColor, fontStyle, compact, layou
 
     if (id === "experience" && content.experience.length > 0) {
       return (
-        <View key={id} style={{ marginBottom: sidebarGap }}>
-          <Text style={sidebarLabel}>{getSectionLabel("experience", content)}</Text>
+        <View key={id}>
+          <Text style={{ ...sidebarLabel, marginTop: sidebarGap }}>{getSectionLabel("experience", content)}</Text>
           {content.experience.map((job, i) => (
             <View key={i} style={{ marginBottom: 6 }}>
               <Text style={{ fontSize: c.fsTiny, fontFamily: ff(true), color: "#fff" }}>{job.title}</Text>
@@ -100,8 +100,8 @@ export function ModernTemplate({ content, accentColor, fontStyle, compact, layou
     const custom = content.customSections?.find(s => s.id === id);
     if (custom && custom.items.length > 0) {
       return (
-        <View key={id} style={{ marginBottom: sidebarGap }}>
-          <Text style={sidebarLabel}>{getSectionLabel(id, content)}</Text>
+        <View key={id}>
+          <Text style={{ ...sidebarLabel, marginTop: sidebarGap }}>{getSectionLabel(id, content)}</Text>
           {custom.items.map((item, i) => (
             <View key={i} style={{ marginBottom: 5 }}>
               <Text style={{ fontSize: c.fsTiny, fontFamily: ff(true), color: "#fff" }}>{item.title}</Text>
@@ -124,7 +124,7 @@ export function ModernTemplate({ content, accentColor, fontStyle, compact, layou
   // ── Main area renders all section types in light-bg style ─────────────────
   const mainSections: Record<string, React.ReactNode> = {
     summary: !!content.summary && (
-      <View wrap={false} key="summary" style={{ marginBottom: c.secGap }}>
+      <View wrap={false} key="summary" style={{ marginTop: c.secGap }}>
         <Text style={{ ...mainHeaderStyle, borderBottomWidth: 0.5, borderBottomColor: "#e2e8f0", paddingBottom: 3, marginBottom: c.headerGap }}>
           {getSectionLabel("summary", content)}
         </Text>
@@ -132,14 +132,14 @@ export function ModernTemplate({ content, accentColor, fontStyle, compact, layou
       </View>
     ),
     experience: content.experience.length > 0 && (
-      <View key="experience" style={{ marginBottom: c.secGap }}>
+      <View key="experience">
         {content.experience.length > 0 ? (
           <>
-            <View wrap={false}>
+            <View wrap={false} style={{ marginTop: c.secGap }}>
               <Text style={{ ...mainHeaderStyle, borderBottomWidth: 0.5, borderBottomColor: "#e2e8f0", paddingBottom: 3, marginBottom: c.headerGap }}>
                 {getSectionLabel("experience", content)}
               </Text>
-              <View style={{ marginBottom: c.jobGap }}>
+              <View style={{ marginBottom: content.experience.length === 1 ? 0 : c.jobGap }}>
                 <View style={{ flexDirection: "row", marginBottom: 1 }}>
                   <Text style={{ flex: 1, fontSize: c.fs + 0.5, fontFamily: ff(true), color: "#111827", minWidth: 0 }}>{content.experience[0]!.title}</Text>
                   <Text style={{ fontSize: c.fsTiny, color: "#9ca3af", flexShrink: 0 }}>{content.experience[0]!.duration}</Text>
@@ -153,8 +153,8 @@ export function ModernTemplate({ content, accentColor, fontStyle, compact, layou
                 ))}
               </View>
             </View>
-            {content.experience.slice(1).map((job, i) => (
-              <View key={i + 1} wrap={false} style={{ marginBottom: c.jobGap }}>
+            {content.experience.slice(1).map((job, i, arr) => (
+              <View key={i + 1} wrap={false} style={{ marginBottom: i === arr.length - 1 ? 0 : c.jobGap }}>
                 <View style={{ flexDirection: "row", marginBottom: 1 }}>
                   <Text style={{ flex: 1, fontSize: c.fs + 0.5, fontFamily: ff(true), color: "#111827", minWidth: 0 }}>{job.title}</Text>
                   <Text style={{ fontSize: c.fsTiny, color: "#9ca3af", flexShrink: 0 }}>{job.duration}</Text>
@@ -177,14 +177,14 @@ export function ModernTemplate({ content, accentColor, fontStyle, compact, layou
       </View>
     ),
     education: content.education.length > 0 && (
-      <View key="education" style={{ marginBottom: c.secGap }}>
+      <View key="education">
         {content.education.length > 0 ? (
           <>
-            <View wrap={false}>
+            <View wrap={false} style={{ marginTop: c.secGap }}>
               <Text style={{ ...mainHeaderStyle, borderBottomWidth: 0.5, borderBottomColor: "#e2e8f0", paddingBottom: 3, marginBottom: c.headerGap }}>
                 {getSectionLabel("education", content)}
               </Text>
-              <View style={{ marginBottom: c.jobGap * 0.5 }}>
+              <View style={{ marginBottom: content.education.length === 1 ? 0 : c.jobGap * 0.5 }}>
                 <View style={{ flexDirection: "row" }}>
                   <Text style={{ flex: 1, fontFamily: ff(true), fontSize: c.fs, color: "#111827", minWidth: 0 }}>{content.education[0]!.degree}</Text>
                   <Text style={{ fontSize: c.fsTiny, color: "#9ca3af", flexShrink: 0 }}>{content.education[0]!.year}</Text>
@@ -192,8 +192,8 @@ export function ModernTemplate({ content, accentColor, fontStyle, compact, layou
                 <Text style={{ fontSize: c.fsSmall - 0.5, fontFamily: fi(), color: "#6b7280" }}>{content.education[0]!.institution}</Text>
               </View>
             </View>
-            {content.education.slice(1).map((edu, i) => (
-              <View key={i + 1} wrap={false} style={{ marginBottom: c.jobGap * 0.5 }}>
+            {content.education.slice(1).map((edu, i, arr) => (
+              <View key={i + 1} wrap={false} style={{ marginBottom: i === arr.length - 1 ? 0 : c.jobGap * 0.5 }}>
                 <View style={{ flexDirection: "row" }}>
                   <Text style={{ flex: 1, fontFamily: ff(true), fontSize: c.fs, color: "#111827", minWidth: 0 }}>{edu.degree}</Text>
                   <Text style={{ fontSize: c.fsTiny, color: "#9ca3af", flexShrink: 0 }}>{edu.year}</Text>
@@ -210,7 +210,7 @@ export function ModernTemplate({ content, accentColor, fontStyle, compact, layou
       </View>
     ),
     skills: flattenSkills(content).length > 0 && (
-      <View wrap={false} key="skills" style={{ marginBottom: c.secGap }}>
+      <View wrap={false} key="skills" style={{ marginTop: c.secGap }}>
         <Text style={{ ...mainHeaderStyle, borderBottomWidth: 0.5, borderBottomColor: "#e2e8f0", paddingBottom: 3, marginBottom: c.headerGap }}>
           {getSectionLabel("skills", content)}
         </Text>
