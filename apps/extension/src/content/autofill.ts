@@ -6,6 +6,8 @@ import { computeStepHash, markStepCompleted } from "./runtime/form-step-manager"
 import { showActivateBanner, hideActivateBanner, isActivateBannerVisible } from "./shared/activate-banner";
 import { startSubmissionDetector, type SubmissionEvent } from "./submission/submission-detector";
 
+const WEB_BASE = import.meta.env.VITE_WEB_BASE ?? "https://apply-flow-web.vercel.app";
+
 const AF_ID = "applyflow-autofill";
 
 // ── Styles ────────────────────────────────────────────────────────────────────
@@ -1197,12 +1199,13 @@ async function openPanel(fields: ScrapedField[], _skipTrackPrompt = false) {
                 <div style="font-size:12px;color:#9ca3af;line-height:1.6;max-width:240px;">
                   Please refresh this page to use the latest version of ApplyFlow.
                 </div>
-                <button onclick="location.reload()"
+                <button id="${AF_ID}-reload-btn"
                   style="background:#6366f1;color:#fff;border:none;border-radius:10px;padding:9px 20px;font-size:12px;font-weight:600;cursor:pointer;margin-top:4px;">
                   Refresh page →
                 </button>
               </div>`;
             p.querySelector(".af-x")?.addEventListener("click", closePanel);
+            p.querySelector(`#${AF_ID}-reload-btn`)?.addEventListener("click", () => location.reload());
             return p;
           })());
           return;
@@ -1356,11 +1359,14 @@ async function openPanel(fields: ScrapedField[], _skipTrackPrompt = false) {
                       You've used all 10 free autofill sessions this month.<br/>
                       Upgrade to Pro for unlimited autofills.
                     </div>
-                    <button onclick="chrome.runtime.sendMessage({type:'OPEN_LOGIN'})"
+                    <button id="${AF_ID}-upgrade-stream-btn"
                       style="background:#6366f1;color:#fff;border:none;border-radius:10px;padding:9px 20px;font-size:12px;font-weight:600;cursor:pointer;margin-top:4px;">
                       ⚡ Upgrade to Pro →
                     </button>
                   </div>`;
+                fieldList.querySelector(`#${AF_ID}-upgrade-stream-btn`)?.addEventListener("click", () => {
+                  chrome.runtime.sendMessage({ type: "OPEN_LOGIN" });
+                });
               }
               // Disable fill button
               const fillBtn = panel.querySelector<HTMLButtonElement>(`#${AF_ID}-fill-btn`);
@@ -1406,12 +1412,13 @@ async function openPanel(fields: ScrapedField[], _skipTrackPrompt = false) {
               <div style="font-size:12px;color:#9ca3af;line-height:1.6;max-width:240px;">
                 Please refresh this page and try again.
               </div>
-              <button onclick="location.reload()"
+              <button id="${AF_ID}-err-reload-btn"
                 style="background:#6366f1;color:#fff;border:none;border-radius:10px;padding:9px 20px;font-size:12px;font-weight:600;cursor:pointer;margin-top:4px;">
                 Refresh page →
               </button>
             </div>`;
           p.querySelector(".af-x")?.addEventListener("click", closePanel);
+          p.querySelector(`#${AF_ID}-err-reload-btn`)?.addEventListener("click", () => location.reload());
           return p;
         })());
       } },
