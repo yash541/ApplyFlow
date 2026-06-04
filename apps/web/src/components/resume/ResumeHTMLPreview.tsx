@@ -2,7 +2,7 @@
 
 import type { TailoredContent, TemplateId, FontStyle, CustomSection } from "@/store/resumeLab";
 import type { SectionId, LayoutOverrides } from "./pdf/shared";
-import { parseRichText, getSectionLabel } from "./pdf/shared";
+import { parseRichText, parseInlineLinks, getSectionLabel } from "./pdf/shared";
 
 interface PreviewProps {
   content: TailoredContent;
