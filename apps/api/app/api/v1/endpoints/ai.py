@@ -289,6 +289,12 @@ Mirror exact phrases where they fit; paraphrase where a direct copy would
 feel forced. Lead every bullet with a strong action verb. Quantify wherever
 the original gives you numbers to work with.
 
+Wrap key metrics and standout numbers in **double asterisks** so they
+render as bold in the resume. Bold: percentages (e.g. **~40%**), dollar
+amounts (**$1M**), scale (**50K+ users**), multipliers (**3x faster**),
+and any number that proves direct impact. Do NOT bold generic numbers,
+years (2021), version numbers, or step counts.
+
 STEP 4 — EXTRA SECTIONS:
 If the JD requires skills, certifications, or section types the candidate's
 resume is missing AND those gaps could be addressed with content from their

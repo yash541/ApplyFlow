@@ -2,7 +2,7 @@
 
 import type { TailoredContent, TemplateId, FontStyle, CustomSection } from "@/store/resumeLab";
 import type { SectionId, LayoutOverrides } from "./pdf/shared";
-import { parseInlineLinks, getSectionLabel } from "./pdf/shared";
+import { parseRichText, getSectionLabel } from "./pdf/shared";
 
 interface PreviewProps {
   content: TailoredContent;
@@ -77,14 +77,16 @@ function ContactRow({ contact, style, accentColor }: { contact: TailoredContent[
 }
 
 function RichText({ text, accentColor }: { text: string; accentColor: string }) {
-  const segments = parseInlineLinks(text);
-  if (segments.length === 1 && !segments[0]?.href) return <>{text}</>;
+  const segments = parseRichText(text);
+  if (segments.length === 1 && !segments[0]?.href && !segments[0]?.bold) return <>{text}</>;
   return (
     <>
       {segments.map((seg, i) =>
         seg.href ? (
           <a key={i} href={seg.href} target="_blank" rel="noreferrer"
             style={{ color: accentColor, textDecoration: "underline" }}>{seg.text}</a>
+        ) : seg.bold ? (
+          <strong key={i}>{seg.text}</strong>
         ) : (
           <span key={i}>{seg.text}</span>
         )

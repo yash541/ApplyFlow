@@ -96,13 +96,14 @@ export function contactLine(contact: TailoredContent["contact"]): string {
     .join("  ·  ");
 }
 
-// ─── Inline link parser ───────────────────────────────────────────────────────
+// ─── Inline text parser ───────────────────────────────────────────────────────
 export interface TextSegment {
   text: string;
   href?: string;
+  bold?: boolean;
 }
 
-// Parses [text](url) markdown links from any text field
+// Parses [text](url) markdown links from any text field (legacy, kept for compat)
 export function parseInlineLinks(text: string): TextSegment[] {
   const segments: TextSegment[] = [];
   const regex = /\[([^\]]+)\]\(([^)]+)\)/g;
@@ -123,6 +124,58 @@ export function parseInlineLinks(text: string): TextSegment[] {
     segments.push({ text: text.slice(lastIndex) });
   }
   return segments;
+}
+
+// Auto-bold pattern — matches standout metrics in resume bullets:
+//   percentages   ~40%, 99.9%, 100%
+//   dollar        $1M, $50K+, $100,000
+//   scale suffix  50K+, 1.5M, 10B
+//   plain "100+"  style
+//   multipliers   3x, 10×
+const _METRIC_RE =
+  /~?\d[\d,]*\.?\d*%|\$\d[\d,.]*[kKmMbBtT]?[+]?|\b\d[\d,.]*[kKmMbBtT][+]?(?=[\s,;.)\]]|$)|\b\d[\d,.]*\+(?=[\s,;.)\]]|$)|\b\d+\.?\d*[×x](?=[\s,;.)\]]|$)/g;
+
+function _applyAutoBold(text: string, out: TextSegment[]): void {
+  let last = 0;
+  _METRIC_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = _METRIC_RE.exec(text)) !== null) {
+    if (m.index > last) out.push({ text: text.slice(last, m.index) });
+    out.push({ text: m[0], bold: true });
+    last = _METRIC_RE.lastIndex;
+  }
+  if (last < text.length) out.push({ text: text.slice(last) });
+  else if (!out.length) out.push({ text });
+}
+
+/**
+ * Full inline parser for resume text.
+ * Handles, in order of precedence:
+ *  1. **bold** markdown  → bold: true
+ *  2. [link](url)        → href
+ *  3. auto-bold metrics  → bold: true on numbers/percentages/multipliers
+ */
+export function parseRichText(text: string): TextSegment[] {
+  const segments: TextSegment[] = [];
+  const mdRe = /\*\*([^*]+)\*\*|\[([^\]]+)\]\(([^)]+)\)/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = mdRe.exec(text)) !== null) {
+    if (m.index > last) _applyAutoBold(text.slice(last, m.index), segments);
+    if (m[1] !== undefined) {
+      // **bold**
+      segments.push({ text: m[1], bold: true });
+    } else {
+      // [text](url)
+      const raw = m[3]!.trim();
+      const href = raw.startsWith("http://") || raw.startsWith("https://")
+        ? raw : raw.includes("@") ? `mailto:${raw}` : `https://${raw}`;
+      segments.push({ text: m[2]!, href });
+    }
+    last = mdRe.lastIndex;
+  }
+  if (last < text.length) _applyAutoBold(text.slice(last), segments);
+  return segments.length ? segments : [{ text }];
 }
 
 export function toHref(value: string): string | undefined {
