@@ -1193,51 +1193,11 @@ async function openPanel(fields: ScrapedField[], _skipTrackPrompt = false) {
           return;
         }
 
-        // ── Pre-flight usage check (instant from cache) ───────────────────────
-        // Wrap sendMessage in try-catch: if the runtime throws synchronously
-        // (degraded extension context), resolve null immediately so the sidebar
-        // still opens instead of the whole function silently aborting.
-        const usage = await Promise.race([
-          new Promise<{ autofill_used?: number; autofill_limit?: number | null } | null>(
-            resolve => {
-              try {
-                chrome.runtime.sendMessage({ type: "GET_USAGE" }, resolve);
-              } catch { resolve(null); }
-            }
-          ),
-          new Promise<null>(resolve => setTimeout(() => resolve(null), 3000)),
-        ]);
-        if (usage && usage.autofill_limit !== null && usage.autofill_limit !== undefined &&
-            (usage.autofill_used ?? 0) >= usage.autofill_limit) {
-          // Show limit screen directly — no sidebar flash
-          swapPanel((() => {
-            const p = document.createElement("div");
-            p.id = `${AF_ID}-panel`;
-            p.innerHTML = `
-              <div class="af-header">
-                <div><div class="af-title-text">⚡ ApplyFlow</div></div>
-                <span class="af-x">✕</span>
-              </div>
-              <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:40px 20px;text-align:center;">
-                <div style="font-size:36px;">🔒</div>
-                <div style="font-size:14px;font-weight:700;color:#f0f0ff;">Autofill limit reached</div>
-                <div style="font-size:12px;color:#6b7280;line-height:1.6;max-width:260px;">
-                  You've used all ${usage.autofill_limit} free autofill sessions this month.<br/>
-                  Upgrade to Pro for unlimited autofills.
-                </div>
-                <button id="${AF_ID}-upgrade-btn"
-                  style="background:#6366f1;color:#fff;border:none;border-radius:12px;padding:10px 22px;font-size:13px;font-weight:700;cursor:pointer;margin-top:4px;">
-                  ⚡ Upgrade to Pro →
-                </button>
-              </div>`;
-            p.querySelector(".af-x")?.addEventListener("click", closePanel);
-            p.querySelector(`#${AF_ID}-upgrade-btn`)?.addEventListener("click", () => {
-              chrome.runtime.sendMessage({ type: "OPEN_LOGIN" });
-            });
-            return p;
-          })());
-          return;
-        }
+        // No pre-flight usage check here — opens sidebar immediately with zero
+        // network overhead. The SMART_MATCH call handles the 402 (limit exceeded)
+        // case via the SMART_MATCH_LIMIT listener, which replaces the sidebar with
+        // the upgrade screen. Pro users pay zero cost; free users at limit see the
+        // upgrade screen after a brief sidebar flash — same outcome, no extra call.
 
         const actionable = fields.filter(f => f.fieldType !== "file");
 
