@@ -497,6 +497,18 @@ function _wireAdvanceAndActionListeners(
       payload: { jd: jobData.description, company: jobData.company,
                  role: jobData.title, applicationId: app.id } } as ExtensionMessage);
   });
+
+  // "Open →" resume button — was missing from the in-place update path,
+  // causing it to do nothing for already-tracked jobs loaded via shimmer update.
+  document.getElementById("af-open-resume")?.addEventListener("click", () => {
+    if (!app.resume_id) return;
+    chrome.runtime.sendMessage(
+      { type: "OPEN_RESUME", payload: { resumeId: app.resume_id, applicationId: app.id } } as ExtensionMessage,
+      (res: { ok: boolean } | null) => {
+        if (chrome.runtime.lastError || !res?.ok) loginRequiredToast();
+      },
+    );
+  });
 }
 
 // ── Main overlay injector ─────────────────────────────────────────────────────
