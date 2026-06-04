@@ -38,7 +38,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 // ── Billing types ─────────────────────────────────────────────────────────────
 
 export interface UsageData {
-  plan: "free" | "pro";
+  plan: "free" | "pro" | "expired";
   autofill_used: number;
   autofill_limit: number | null;  // null = unlimited (pro)
   score_used: number;
