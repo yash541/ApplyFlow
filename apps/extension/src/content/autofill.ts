@@ -1179,6 +1179,35 @@ async function openPanel(fields: ScrapedField[], _skipTrackPrompt = false) {
       fields,
       loggedIn,
       async () => {
+        // Guard: if the extension was updated and this tab hasn't been refreshed,
+        // the runtime context is invalidated — sendMessage would throw silently.
+        // Show a clear prompt instead of doing nothing.
+        if (!chrome.runtime?.id) {
+          swapPanel((() => {
+            const p = document.createElement("div");
+            p.id = `${AF_ID}-panel`;
+            p.innerHTML = `
+              <div class="af-header">
+                <div><div class="af-title-text">⚡ ApplyFlow</div></div>
+                <span class="af-x">✕</span>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:36px 20px;text-align:center;">
+                <div style="font-size:28px;">🔄</div>
+                <div style="font-size:13px;font-weight:700;color:#f0f0ff;">Extension updated</div>
+                <div style="font-size:12px;color:#9ca3af;line-height:1.6;max-width:240px;">
+                  Please refresh this page to use the latest version of ApplyFlow.
+                </div>
+                <button onclick="location.reload()"
+                  style="background:#6366f1;color:#fff;border:none;border-radius:10px;padding:9px 20px;font-size:12px;font-weight:600;cursor:pointer;margin-top:4px;">
+                  Refresh page →
+                </button>
+              </div>`;
+            p.querySelector(".af-x")?.addEventListener("click", closePanel);
+            return p;
+          })());
+          return;
+        }
+
         // ── Pre-flight usage check (instant from cache) ───────────────────────
         // Check BEFORE opening the sidebar so user sees limit screen immediately,
         // not after the sidebar opens with empty fields.
