@@ -1,6 +1,6 @@
 import type { LinkedInJobData, ExtensionMessage, NotificationType } from "@applyflow/shared";
 import { showToast, clearAllToasts } from "./toast";
-import { injectOverlay, updateOverlayScore, injectLoadingOverlay, startCountUp, showProfileNudge, type AppRecord } from "./overlay";
+import { injectOverlay, updateOverlayScore, injectLoadingOverlay, startCountUp, showProfileNudge, markRevisit, type AppRecord } from "./overlay";
 import { waitForStableDOM } from "../runtime/dom-stability";
 import { scrapeWithRetries } from "../runtime/runtime-manager";
 import { buildFingerprint } from "../tracking/fingerprint";
@@ -424,6 +424,7 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
         // Persistent cache check — serve instantly, no AI call needed
         void loadPersistedScore(jobData.url).then((persisted) => {
           if (persisted && runId === currentRunId) {
+            markRevisit(persisted.savedAt); // show "Seen X ago" after animation
             applyResolvedScore(persisted.score, persisted.basis, false);
             return;
           }

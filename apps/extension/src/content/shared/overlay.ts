@@ -21,6 +21,12 @@ export type AppRecord = {
 
 let _animTimer: ReturnType<typeof setInterval> | null = null;
 let _animCurrent = 0;
+let _revisitSavedAt: number | null = null; // set when score comes from persistent cache
+
+/** Call before updateOverlayScore when serving a cached score — shows "Seen X ago" badge. */
+export function markRevisit(savedAt: number): void {
+  _revisitSavedAt = savedAt;
+}
 
 function _clearAnim() {
   if (_animTimer) { clearInterval(_animTimer); _animTimer = null; }
@@ -149,6 +155,23 @@ export function updateOverlayScore(finalScore: number, scoreBasis: string): void
       // Reveal the rematch button now that a real score is displayed
       const rb = document.querySelector<HTMLElement>(".af-rematch-btn");
       if (rb) rb.style.display = "";
+
+      // "Seen X ago" badge — only when score was served from persistent cache
+      if (_revisitSavedAt !== null) {
+        const savedAt = _revisitSavedAt;
+        _revisitSavedAt = null;
+        if (!document.querySelector(".af-revisit-label")) {
+          const diff = Date.now() - savedAt;
+          const days = Math.floor(diff / 86400000);
+          const ago = days === 0 ? "today" : days === 1 ? "yesterday" : `${days}d ago`;
+          const badge = document.createElement("span");
+          badge.className = "af-revisit-label";
+          badge.style.cssText = "display:block;font-size:10px;color:rgba(255,255,255,0.28);margin-top:3px;letter-spacing:0.02em;";
+          badge.textContent = `· Seen ${ago}`;
+          const tier2 = _tierEl();
+          if (tier2) tier2.insertAdjacentElement("afterend", badge);
+        }
+      }
       return;
     }
     cur += step;
