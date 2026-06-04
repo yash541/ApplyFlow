@@ -660,11 +660,18 @@ async function fetchAndCacheUsage(): Promise<UsageCache | null> {
   try {
     const token = await getToken();
     if (!token) return null;
-    const res = await authedFetch(`${API_BASE}/api/v1/billing/usage`);
-    if (!res.ok) return null;
-    const data = await res.json() as UsageCache;
-    _usageCache = { ...data, fetchedAt: Date.now() };
-    return _usageCache;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000); // 5s hard cap
+    try {
+      const res = await authedFetch(`${API_BASE}/api/v1/billing/usage`, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (!res.ok) return null;
+      const data = await res.json() as UsageCache;
+      _usageCache = { ...data, fetchedAt: Date.now() };
+      return _usageCache;
+    } finally {
+      clearTimeout(timeout);
+    }
   } catch { return null; }
 }
 

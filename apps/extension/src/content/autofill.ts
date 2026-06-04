@@ -1182,9 +1182,14 @@ async function openPanel(fields: ScrapedField[], _skipTrackPrompt = false) {
         // ── Pre-flight usage check (instant from cache) ───────────────────────
         // Check BEFORE opening the sidebar so user sees limit screen immediately,
         // not after the sidebar opens with empty fields.
-        const usage = await new Promise<{ autofill_used?: number; autofill_limit?: number | null } | null>(
-          resolve => chrome.runtime.sendMessage({ type: "GET_USAGE" }, resolve)
-        );
+        // Race against a 3s timeout — if the API is slow/unreachable, proceed
+        // without blocking (the SMART_MATCH call will handle auth/limit errors).
+        const usage = await Promise.race([
+          new Promise<{ autofill_used?: number; autofill_limit?: number | null } | null>(
+            resolve => chrome.runtime.sendMessage({ type: "GET_USAGE" }, resolve)
+          ),
+          new Promise<null>(resolve => setTimeout(() => resolve(null), 3000)),
+        ]);
         if (usage && usage.autofill_limit !== null && usage.autofill_limit !== undefined &&
             (usage.autofill_used ?? 0) >= usage.autofill_limit) {
           // Show limit screen directly — no sidebar flash
