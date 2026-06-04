@@ -11,8 +11,8 @@ export function ATSSafeTemplate({ content, accentColor, fontStyle, compact, layo
   // Accent line sits just above the content area; derive coordinates from actual page padding
   // so it stays aligned when the margins slider changes.
   // In compact mode pagePad top = 22pt → line must be at 21pt (1pt inside margin, not into text)
-  const accentLineTop  = compact ? 27 : Math.round(40 * c.m) - 1;
-  const accentLineSide = compact ? 38 : Math.round(52 * c.m);
+  const accentLineTop  = compact ? 21 : Math.round(40 * c.m) - 1;
+  const accentLineSide = compact ? 31 : Math.round(52 * c.m);
 
   const headerStyle = { fontFamily: ff(true), fontSize: c.fs + 1, textTransform: "uppercase" as const };
 
