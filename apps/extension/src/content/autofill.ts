@@ -569,24 +569,6 @@ function renderReviewSidebar(
 
   const hasResume = !!resumeId;
 
-  const emptyProfileBanner = withValue === 0 && items.length > 0 ? `
-    <div style="
-      display:flex;align-items:flex-start;gap:10px;
-      margin:0 16px 4px;padding:10px 12px;
-      background:rgba(251,191,36,0.08);
-      border:1px solid rgba(251,191,36,0.22);
-      border-radius:10px;font-size:12px;line-height:1.45;
-    ">
-      <span style="font-size:14px;margin-top:1px;flex-shrink:0;">⚠</span>
-      <span style="color:rgba(255,255,255,0.75);">
-        Your profile is empty — ApplyFlow needs your information to fill these fields.
-        <a href="${WEB_BASE}/profile" target="_blank" rel="noopener"
-           style="color:rgba(251,191,36,0.9);text-decoration:none;font-weight:600;margin-left:4px;white-space:nowrap;">
-          Complete profile →
-        </a>
-      </span>
-    </div>` : "";
-
   panel.innerHTML = `
     <div class="af-header">
       <div>
@@ -596,7 +578,7 @@ function renderReviewSidebar(
       </div>
       <span class="af-x">✕</span>
     </div>
-    ${emptyProfileBanner}
+    <div id="${AF_ID}-field-hint"></div>
     <div class="af-field-list">${rows}</div>
     <div class="af-footer">
       <div class="af-footer-row">
@@ -1344,6 +1326,32 @@ async function openPanel(fields: ScrapedField[], _skipTrackPrompt = false) {
           } else if (msg.type === "SMART_MATCH_DONE") {
             chrome.runtime.onMessage.removeListener(onStreamMsg);
             syncPanelCounts();
+            // Only after all answers have arrived — check if any were filled.
+            // Showing this on initial render caused false "profile empty" warnings
+            // for users with full profiles (answers hadn't streamed in yet).
+            const p = document.getElementById(`${AF_ID}-panel`);
+            const hint = p?.querySelector<HTMLElement>(`#${AF_ID}-field-hint`);
+            if (hint) {
+              const filled = p?.querySelectorAll(".af-review-checkbox:checked").length ?? 0;
+              const total  = p?.querySelectorAll(".af-review-item").length ?? 0;
+              if (filled === 0 && total > 0) {
+                hint.innerHTML = `<div style="
+                  display:flex;align-items:flex-start;gap:10px;
+                  margin:0 16px 4px;padding:10px 12px;
+                  background:rgba(251,191,36,0.08);
+                  border:1px solid rgba(251,191,36,0.22);
+                  border-radius:10px;font-size:12px;line-height:1.45;">
+                  <span style="font-size:14px;flex-shrink:0;">⚠</span>
+                  <span style="color:rgba(255,255,255,0.75);">
+                    These fields couldn't be auto-filled. Fill them manually or
+                    <a href="${WEB_BASE}/profile" target="_blank" rel="noopener"
+                       style="color:rgba(251,191,36,0.9);text-decoration:none;font-weight:600;margin-left:2px;">
+                      check your profile →
+                    </a>
+                  </span>
+                </div>`;
+              }
+            }
           } else if (msg.type === "SMART_MATCH_LIMIT") {
             // Autofill usage exhausted — replace the sidebar with an upgrade prompt
             chrome.runtime.onMessage.removeListener(onStreamMsg);
