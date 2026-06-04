@@ -5,6 +5,7 @@ import { injectAssistant, updateAssistantStatus, destroyAssistant, isAssistantAc
 import { computeStepHash, markStepCompleted } from "./runtime/form-step-manager";
 import { showActivateBanner, hideActivateBanner, isActivateBannerVisible } from "./shared/activate-banner";
 import { startSubmissionDetector, type SubmissionEvent } from "./submission/submission-detector";
+import { loadLearnedFields, persistLearnedFields, buildLearnedAnswers, normalizeLabel } from "./runtime/learned-fields-store";
 
 const WEB_BASE = import.meta.env.VITE_WEB_BASE ?? "https://apply-flow-web.vercel.app";
 
@@ -1214,12 +1215,21 @@ async function openPanel(fields: ScrapedField[], _skipTrackPrompt = false) {
 
         updateAssistantStatus("autofill_ready");
 
-        // ── Open the sidebar IMMEDIATELY with empty answers ──────────────────
-        // Streaming answers will populate fields as they arrive.
+        // ── Load local learned fields and pre-fill matching ones instantly ────
+        // Learned answers come from chrome.storage.local (zero network cost).
+        // Semantic normalization means "given name" matches a "first name" save,
+        // "mobile" matches "phone", etc. — portable across every job site.
+        const learnedFields = await loadLearnedFields();
+        const learnedAnswers = buildLearnedAnswers(actionable, learnedFields);
+        // Fields already answered from local cache — no need to send to Claude
+        const learnedUids = new Set(learnedAnswers.map(a => a.uid));
+
+        // ── Open the sidebar IMMEDIATELY with learned answers pre-filled ──────
+        // AI streaming answers will arrive shortly and fill remaining fields.
         swapPanel(
           renderReviewSidebar(
             [...actionable, ...fields.filter(f => f.fieldType === "file")],
-            [],   // empty — filled in progressively via FIELD_ANSWER messages
+            learnedAnswers,   // pre-populated from local cache, rest streams in
             resumeId,
             resumeName,
             async (confirmed, rId) => {
@@ -1266,10 +1276,11 @@ async function openPanel(fields: ScrapedField[], _skipTrackPrompt = false) {
                 skipped,
                 learnedItems,
                 (items) => {
-                  chrome.runtime.sendMessage({
-                    type: "SAVE_LEARNED_FIELDS",
-                    payload: { fields: Object.fromEntries(items.map((i) => [i.label, i.value])) },
-                  });
+                  // Local-first: writes to chrome.storage.local instantly, then
+                  // fires backend sync async. Never blocks or fails silently.
+                  persistLearnedFields(
+                    Object.fromEntries(items.map((i) => [i.label, i.value])),
+                  );
                   finishThisStep();
                 },
                 finishThisStep,
@@ -1345,23 +1356,31 @@ async function openPanel(fields: ScrapedField[], _skipTrackPrompt = false) {
         };
         chrome.runtime.onMessage.addListener(onStreamMsg);
 
-        // Fire the request — sendResponse returns immediately, answers come via FIELD_ANSWER
-        chrome.runtime.sendMessage({
-          type: "SMART_MATCH",
-          payload: {
-            fields: actionable.map(f => ({
-              uid:        f.uid,
-              question:   f.question,
-              field_type: f.fieldType,
-              options:    f.options,
-              selector:   f.selector,
-            })),
-            url: window.location.href,
-            job_context: activeSession
-              ? `${activeSession.company ?? ""} · ${activeSession.role ?? ""}`.trim()
-              : "",
-          },
-        });
+        // Fire the request for fields NOT already answered from local cache.
+        // Skipping learned fields reduces Claude API calls and speeds up the fill.
+        const aiFields = actionable.filter(f => !learnedUids.has(f.uid));
+        if (aiFields.length > 0) {
+          chrome.runtime.sendMessage({
+            type: "SMART_MATCH",
+            payload: {
+              fields: aiFields.map(f => ({
+                uid:        f.uid,
+                question:   f.question,
+                field_type: f.fieldType,
+                options:    f.options,
+                selector:   f.selector,
+              })),
+              url: window.location.href,
+              job_context: activeSession
+                ? `${activeSession.company ?? ""} · ${activeSession.role ?? ""}`.trim()
+                : "",
+            },
+          });
+        } else {
+          // All fields answered from cache — no AI call needed, fire DONE immediately
+          chrome.runtime.onMessage.removeListener(onStreamMsg);
+          syncPanelCounts();
+        }
       } catch (err) {
         // Safety net: any unhandled error inside onMatch silently killed the
         // button with no feedback. Now we always show a recoverable error state.
