@@ -1,5 +1,5 @@
 import uuid
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import anthropic
@@ -11,6 +11,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.limiter import limiter
 from app.core.usage import check_and_increment_usage
 from app.models import User, Resume, Application, UserProfile
 
@@ -71,8 +72,10 @@ class JobExtractionResponse(BaseModel):
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/match", response_model=MatchResponse)
+@limiter.limit("60/hour")
 async def match_job(
-    request: JobMatchRequest,
+    request: Request,
+    body: JobMatchRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -112,8 +115,8 @@ async def match_job(
     education     = edu_list[0].get("degree", "") + " " + edu_list[0].get("institution", "") if edu_list else "not specified"
     summary       = str(profile_data.get("summary", ""))[:300]
 
-    has_jd    = len(request.description.strip()) > 150
-    jd_block  = request.description[:2000] if has_jd else ""
+    has_jd    = len(body.description.strip()) > 150
+    jd_block  = body.description[:2000] if has_jd else ""
     basis     = "full_jd" if has_jd else "title_only"
     profile_complete = bool(profile_data.get("skills") or profile_data.get("experience"))
 
@@ -128,8 +131,8 @@ Candidate profile:
 - Summary: {summary}
 
 Job posting:
-- Title: {request.job_title}
-- Company: {request.company}
+- Title: {body.job_title}
+- Company: {body.company}
 - Description: {jd_block}
 
 Score this candidate (0-100 for each):
@@ -159,7 +162,7 @@ Candidate profile:
 - Current/recent role: {current_title} at {current_co}
 - Education: {education}
 
-Job: {request.job_title} at {request.company}
+Job: {body.job_title} at {body.company}
 
 Infer typical requirements for this type of role at this company, then score the candidate.
 Be honest — if the title/company gives little signal, reflect that with a mid-range score.
@@ -206,8 +209,10 @@ Return ONLY valid JSON:
 
 
 @router.post("/tailor")
+@limiter.limit("20/hour")
 async def tailor_resume(
-    request: TailorRequest,
+    request: Request,
+    body: TailorRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -224,12 +229,12 @@ async def tailor_resume(
       3. Neither → 400
     """
     # ── Resolve resume text ───────────────────────────────────────────────────
-    resume_text = request.resume_text
+    resume_text = body.resume_text
 
-    if request.resume_id:
+    if body.resume_id:
         result = await db.execute(
             select(Resume).where(
-                Resume.id == uuid.UUID(request.resume_id),
+                Resume.id == uuid.UUID(body.resume_id),
                 Resume.user_id == current_user.id,
             )
         )
@@ -242,12 +247,12 @@ async def tailor_resume(
         raise HTTPException(status_code=400, detail="Provide resume_id or resume_text")
 
     # ── Resolve job description ───────────────────────────────────────────────
-    job_description = request.job_description
+    job_description = body.job_description
 
-    if request.application_id:
+    if body.application_id:
         result = await db.execute(
             select(Application).where(
-                Application.id == uuid.UUID(request.application_id),
+                Application.id == uuid.UUID(body.application_id),
                 Application.user_id == current_user.id,
             )
         )
@@ -364,8 +369,10 @@ Rules:
 
 
 @router.post("/extract-job", response_model=JobExtractionResponse)
+@limiter.limit("60/hour")
 async def extract_job(
-    request: JobExtractionRequest,
+    request: Request,
+    body: JobExtractionRequest,
     current_user: User = Depends(get_current_user),
 ):
     """AI fallback extraction — called when DOM selectors fail on a portal.
@@ -373,14 +380,14 @@ async def extract_job(
     Parses raw page text and returns structured job fields. Used by the
     extension's runtime-manager after scrapeWithRetries exhausts all attempts.
     """
-    text = request.page_text[:8000]  # hard cap — model context is not free
+    text = body.page_text[:8000]  # hard cap — model context is not free
     if not text.strip():
         raise HTTPException(status_code=422, detail="page_text is empty")
 
-    portal_hint = f"Portal: {request.portal}\n" if request.portal else ""
+    portal_hint = f"Portal: {body.portal}\n" if body.portal else ""
     prompt = (
         f"{portal_hint}"
-        f"URL: {request.url}\n\n"
+        f"URL: {body.url}\n\n"
         f"Extract the job posting from the page text below. "
         f"Return ONLY valid JSON — no markdown fences, no explanation:\n"
         f"{{\n"

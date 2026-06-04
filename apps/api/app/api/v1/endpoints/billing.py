@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 import stripe
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from app.core.limiter import limiter
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -77,7 +78,9 @@ async def _get_or_create_customer(user: User, db: AsyncSession) -> str:
 
 
 @router.post("/checkout")
+@limiter.limit("10/hour")
 async def create_checkout_session(
+    request: Request,
     body: CheckoutRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -117,7 +120,9 @@ async def create_portal_session(
 
 
 @router.post("/sync-plan")
+@limiter.limit("20/hour")
 async def sync_plan(
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

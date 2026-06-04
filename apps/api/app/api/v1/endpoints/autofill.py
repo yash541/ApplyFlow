@@ -4,7 +4,7 @@ import re
 from typing import Any
 
 import anthropic
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -12,6 +12,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.limiter import limiter
 from app.core.usage import check_and_increment_usage
 from app.models import User, UserProfile, Resume, Application
 
@@ -753,7 +754,9 @@ def _prepare_profile(current_user: "User", profile_data: dict) -> dict:
 
 
 @router.post("/smart-match-stream")
+@limiter.limit("30/hour")
 async def smart_match_stream(
+    request: Request,
     body: SmartMatchRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
