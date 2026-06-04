@@ -509,6 +509,7 @@ function renderReviewSidebar(
   resumeName: string | null,
   onFill: (confirmed: ReviewItem[], resumeId: string | null) => Promise<void>,
   onClose: () => void,
+  learnedUids: ReadonlySet<string> = new Set(),
 ): HTMLElement {
   const panel = document.createElement("div");
   panel.id = `${AF_ID}-panel`;
@@ -519,12 +520,16 @@ function renderReviewSidebar(
   const items: ReviewItem[] = fields
     .map(f => {
       const a = answerMap.get(f.uid);
+      // Learned fields are user-confirmed — show as "Profile" (green), not "AI" (purple)
+      const source = (!a || a.skipped) ? "none"
+        : learnedUids.has(f.uid) ? "rules"
+        : "ai";
       return {
         uid:      f.uid,
         kind:     f.fieldType === "file" ? "resume_file" : "unknown",
         label:    f.question,
         value:    (!a || a.skipped) ? "" : a.answer,
-        source:   (a && !a.skipped) ? "ai" : "none",
+        source,
         selector: f.selector,
       };
     })
@@ -1287,6 +1292,7 @@ async function openPanel(fields: ScrapedField[], _skipTrackPrompt = false) {
               ));
             },
             closePanel,
+            learnedUids,  // marks learned-cache answers as "Profile" badge, not "AI"
           ),
         );
 
