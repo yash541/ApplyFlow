@@ -26,16 +26,12 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/applyflow"
 
-    # Redis
-    REDIS_URL: str = "redis://localhost:6379"
-
     # Auth
     SECRET_KEY: str = "CHANGE_ME_IN_PRODUCTION"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 1 day
 
     # AI
     ANTHROPIC_API_KEY: str = ""
-    OPENAI_API_KEY: str = ""
     DEFAULT_AI_MODEL: str = "claude-sonnet-4-6"
     FAST_AI_MODEL: str = "claude-haiku-4-5-20251001"
 
