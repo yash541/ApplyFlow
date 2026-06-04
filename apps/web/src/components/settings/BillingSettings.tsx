@@ -105,7 +105,8 @@ export function BillingSettings() {
     }
   }
 
-  const isPro = usage?.plan === "pro";
+  const isPro     = usage?.plan === "pro";
+  const isExpired = usage?.plan === "expired";
 
   return (
     <>
@@ -128,11 +129,16 @@ export function BillingSettings() {
               ) : (
                 <div className="flex items-center gap-2">
                   <span className="text-title-sm font-semibold text-on-surface capitalize">
-                    {usage?.plan ?? "Free"}
+                    {isExpired ? "Free" : (usage?.plan ?? "Free")}
                   </span>
                   {isPro && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary uppercase tracking-wide">
                       <Check className="h-2.5 w-2.5" /> Pro
+                    </span>
+                  )}
+                  {isExpired && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-400 uppercase tracking-wide">
+                      Expired
                     </span>
                   )}
                 </div>
@@ -222,8 +228,26 @@ export function BillingSettings() {
           </div>
         )}
 
-        {/* Pro feature callout for free users */}
-        {!loading && !isPro && (
+        {/* Expired plan callout */}
+        {!loading && isExpired && (
+          <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-3">
+            <p className="text-label-sm font-semibold text-amber-300">Your Pro subscription has ended</p>
+            <p className="text-label-xs text-amber-400/70 leading-relaxed">
+              You've already used your free trial. Resubscribe to continue using AI match scoring,
+              autofill, and resume downloads.
+            </p>
+            <button
+              onClick={() => setShowUpgrade(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-label-sm font-semibold text-white hover:bg-primary/90 transition-colors"
+            >
+              <Zap className="h-3.5 w-3.5" />
+              Resubscribe to Pro
+            </button>
+          </div>
+        )}
+
+        {/* Pro feature callout for free users (never had Pro) */}
+        {!loading && !isPro && !isExpired && (
           <div className="rounded-xl border border-primary/15 bg-primary/5 p-4 space-y-2">
             <p className="text-label-sm font-semibold text-primary">What&apos;s included in Pro</p>
             <ul className="space-y-1.5">

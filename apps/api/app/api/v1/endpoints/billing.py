@@ -204,6 +204,7 @@ async def stripe_webhook(
             user = result.scalar_one_or_none()
             if user:
                 user.plan = "pro"
+                user.has_had_pro = True  # permanent — never unset
                 if subscription_id:
                     user.stripe_subscription_id = subscription_id
                 await db.commit()
@@ -221,6 +222,7 @@ async def stripe_webhook(
         if user:
             if status in ("active", "trialing"):
                 user.plan = "pro"
+                user.has_had_pro = True  # permanent — never unset
             else:
                 user.plan = "free"
             user.stripe_subscription_id = sub.get("id")
@@ -253,7 +255,22 @@ async def get_usage(
     usage_row = await _get_or_create_usage(current_user.id, month, db)
     await db.flush()
 
-    is_pro = current_user.plan == "pro"
+    is_pro     = current_user.plan == "pro"
+    is_expired = not is_pro and getattr(current_user, "has_had_pro", False)
+
+    # Expired users: had Pro before, now plan=free.
+    # Return zero limits so the extension and web app show the upgrade wall
+    # rather than the free trial credits they've already consumed.
+    if is_expired:
+        return UsageResponse(
+            plan="expired",
+            autofill_used=0,
+            autofill_limit=0,
+            score_used=0,
+            score_limit=0,
+            downloads_used=current_user.total_downloads,
+            downloads_limit=0,
+        )
 
     return UsageResponse(
         plan=current_user.plan,

@@ -71,6 +71,19 @@ async def check_and_increment_usage(
     if user.plan == "pro":
         return  # unlimited
 
+    # Expired Pro: had a paid subscription before, now on free plan.
+    # They've already consumed their one-time free trial — block AI features
+    # until they resubscribe. Free tier is an onboarding trial, not a permanent right.
+    if getattr(user, "has_had_pro", False):
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "code": "subscription_expired",
+                "usage_type": usage_type,
+                "message": "Your Pro subscription has ended. Upgrade to continue using AI features.",
+            },
+        )
+
     month = _current_month()
     usage_row = await _get_or_create_usage(user.id, month, db)
 

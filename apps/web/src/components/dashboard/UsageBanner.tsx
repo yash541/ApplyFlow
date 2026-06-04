@@ -20,6 +20,25 @@ export function UsageBanner() {
   // Hide if upgrade just happened (URL has ?upgraded=true) to avoid contradictory banners
   if (searchParams.get("upgraded") === "true") return null;
 
+  // Expired users: show a distinct resubscribe banner
+  if (usage?.plan === "expired") {
+    return (
+      <div className="flex items-center gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-2.5">
+        <Zap className="h-4 w-4 shrink-0 text-amber-400" />
+        <p className="flex-1 text-label-sm text-amber-300/90">
+          Your Pro subscription has ended — AI features are paused
+        </p>
+        <button
+          onClick={() => openUpgrade("Resubscribe to Pro to resume AI scoring, autofill, and downloads.")}
+          className="flex shrink-0 items-center gap-1 text-label-sm font-medium text-amber-400 hover:text-amber-300 transition-colors"
+        >
+          Resubscribe
+          <ArrowRight className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  }
+
   // Only show for free users when usage exceeds 50% on any meter
   if (!usage || usage.plan === "pro") return null;
 

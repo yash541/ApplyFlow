@@ -437,7 +437,8 @@ async function runInit(adapter: JobPortalAdapter): Promise<void> {
               if (chrome.runtime.lastError || runId !== currentRunId || scoreLocked) return;
               // Clear the limit flag immediately if the user has upgraded to Pro
               if (usage?.plan === "pro") clearScoreLimitCache();
-              const isFreePlan = !usage || usage.plan !== "pro";
+              // "expired" = had Pro before, no longer subscribed → treat as fully limited
+              const isFreePlan = !usage || (usage.plan !== "pro");
               const limitHit = isFreePlan && usage?.score_limit != null && (usage.score_used ?? 0) >= usage.score_limit;
               if (limitHit) {
                 showLimitExceeded();
