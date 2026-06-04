@@ -1178,7 +1178,7 @@ async function openPanel(fields: ScrapedField[], _skipTrackPrompt = false) {
     renderDetectionPanel(
       fields,
       loggedIn,
-      async () => {
+      async () => { try {
         // Guard: if the extension was updated and this tab hasn't been refreshed,
         // the runtime context is invalidated — sendMessage would throw silently.
         // Show a clear prompt instead of doing nothing.
@@ -1209,13 +1209,16 @@ async function openPanel(fields: ScrapedField[], _skipTrackPrompt = false) {
         }
 
         // ── Pre-flight usage check (instant from cache) ───────────────────────
-        // Check BEFORE opening the sidebar so user sees limit screen immediately,
-        // not after the sidebar opens with empty fields.
-        // Race against a 3s timeout — if the API is slow/unreachable, proceed
-        // without blocking (the SMART_MATCH call will handle auth/limit errors).
+        // Wrap sendMessage in try-catch: if the runtime throws synchronously
+        // (degraded extension context), resolve null immediately so the sidebar
+        // still opens instead of the whole function silently aborting.
         const usage = await Promise.race([
           new Promise<{ autofill_used?: number; autofill_limit?: number | null } | null>(
-            resolve => chrome.runtime.sendMessage({ type: "GET_USAGE" }, resolve)
+            resolve => {
+              try {
+                chrome.runtime.sendMessage({ type: "GET_USAGE" }, resolve);
+              } catch { resolve(null); }
+            }
           ),
           new Promise<null>(resolve => setTimeout(() => resolve(null), 3000)),
         ]);
@@ -1385,7 +1388,33 @@ async function openPanel(fields: ScrapedField[], _skipTrackPrompt = false) {
               : "",
           },
         });
-      },
+      } catch (err) {
+        // Safety net: any unhandled error inside onMatch silently killed the
+        // button with no feedback. Now we always show a recoverable error state.
+        console.error("[ApplyFlow] autofill onMatch error:", err);
+        swapPanel((() => {
+          const p = document.createElement("div");
+          p.id = `${AF_ID}-panel`;
+          p.innerHTML = `
+            <div class="af-header">
+              <div><div class="af-title-text">⚡ ApplyFlow</div></div>
+              <span class="af-x">✕</span>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:36px 20px;text-align:center;">
+              <div style="font-size:28px;">⚠️</div>
+              <div style="font-size:13px;font-weight:700;color:#f0f0ff;">Something went wrong</div>
+              <div style="font-size:12px;color:#9ca3af;line-height:1.6;max-width:240px;">
+                Please refresh this page and try again.
+              </div>
+              <button onclick="location.reload()"
+                style="background:#6366f1;color:#fff;border:none;border-radius:10px;padding:9px 20px;font-size:12px;font-weight:600;cursor:pointer;margin-top:4px;">
+                Refresh page →
+              </button>
+            </div>`;
+          p.querySelector(".af-x")?.addEventListener("click", closePanel);
+          return p;
+        })());
+      } },
       closePanel,
     ),
   );
