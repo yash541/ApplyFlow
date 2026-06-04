@@ -9,7 +9,7 @@ export function MinimalTemplate({ content, accentColor, fontStyle, compact, layo
   const fi = () => fontItalic(fontStyle);
   const c = makeConfig(compact, layout);
 
-  const headerStyle = { fontSize: c.fsTiny, fontFamily: ff(true), textTransform: "uppercase" as const, letterSpacing: 2, color: accentColor };
+  const headerStyle = { fontSize: c.fsTiny, fontFamily: ff(true), textTransform: "uppercase" as const, letterSpacing: 2, color: "#111" };
   // Minimal is intentionally more spacious; add a fixed offset on top of the layout-scaled base
   // so the spacing slider still works while preserving the open, airy character of this template.
   const secGap = c.secGap + (compact ? 5 : 8);

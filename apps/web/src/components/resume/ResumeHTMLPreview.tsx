@@ -213,7 +213,7 @@ function ClassicPreview({ content, accentColor, fontStyle, compact, sectionOrder
 function MinimalPreview({ content, accentColor, fontStyle, compact, sectionOrder, layout }: PreviewProps) {
   const ff = fontStyle === "serif" ? "'Times New Roman', Times, serif" : "Helvetica, 'Helvetica Neue', Arial, sans-serif";
   const c = makeCfg(compact, layout);
-  const hStyle: React.CSSProperties = { fontSize: c.fsTiny, fontWeight: 700, textTransform: "uppercase", letterSpacing: 2, color: accentColor, marginBottom: c.headerGap, pageBreakAfter: "avoid", breakAfter: "avoid" };
+  const hStyle: React.CSSProperties = { fontSize: c.fsTiny, fontWeight: 700, textTransform: "uppercase", letterSpacing: 2, color: "#111", marginBottom: c.headerGap, pageBreakAfter: "avoid", breakAfter: "avoid" };
 
   const sections: Record<string, React.ReactNode> = {
     summary: content.summary ? (
