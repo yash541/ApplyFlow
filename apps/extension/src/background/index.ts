@@ -513,18 +513,31 @@ async function getToken(): Promise<string | null> {
 
 async function authedFetch(url: string, init: RequestInit = {}): Promise<Response> {
   const token = await getToken();
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      ...(init.headers ?? {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
-  if (res.status === 401) {
-    // Token expired or invalid — wipe it so the popup shows the login screen
-    await chrome.storage.local.remove("session");
+
+  // Global 10s timeout on every API call — prevents hanging connections from
+  // accumulating when Railway is slow/unreachable, which causes Chrome to run
+  // out of memory under sustained load (many job navigations).
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+
+  try {
+    const res = await fetch(url, {
+      ...init,
+      // Honour a caller-provided signal (e.g. fetchAndCacheUsage's own controller),
+      // but always guarantee our global 10s cap via our own controller.
+      signal: init.signal ?? controller.signal,
+      headers: {
+        ...(init.headers ?? {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+    if (res.status === 401) {
+      await chrome.storage.local.remove("session");
+    }
+    return res;
+  } finally {
+    clearTimeout(timer);
   }
-  return res;
 }
 
 async function analyzeJob(payload: LinkedInJobData) {
