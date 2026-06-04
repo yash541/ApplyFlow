@@ -112,7 +112,7 @@ function CustomSectionPreview({
     <div>
       <p style={headerStyle}>{section.label}</p>
       {section.items.map((item, i) => (
-        <div key={i} style={{ marginBottom: itemGap }}>
+        <div key={i} style={{ marginBottom: itemGap, pageBreakInside: "avoid", breakInside: "avoid" }}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 1 }}>
             <span style={titleStyle}>{item.title}</span>
             {item.subtitle && <span style={subtitleStyle}>{item.subtitle}</span>}
@@ -148,7 +148,7 @@ function renderCustom(id: string, content: TailoredContent, accentColor: string,
 function ClassicPreview({ content, accentColor, fontStyle, compact, sectionOrder, layout }: PreviewProps) {
   const ff = fontStyle === "serif" ? "'Times New Roman', Times, serif" : "Helvetica, 'Helvetica Neue', Arial, sans-serif";
   const c = makeCfg(compact, layout);
-  const hStyle: React.CSSProperties = { fontSize: c.fsTiny, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.5, color: accentColor, marginBottom: c.headerGap };
+  const hStyle: React.CSSProperties = { fontSize: c.fsTiny, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.5, color: accentColor, marginBottom: c.headerGap, pageBreakAfter: "avoid", breakAfter: "avoid" };
 
   const sections: Record<string, React.ReactNode> = {
     summary: content.summary ? (
@@ -161,7 +161,7 @@ function ClassicPreview({ content, accentColor, fontStyle, compact, sectionOrder
       <div key="experience" style={{ marginBottom: c.secGap }}>
         <p style={hStyle}>{getSectionLabel("experience", content)}</p>
         {content.experience.map((job, i) => (
-          <div key={i} style={{ marginBottom: c.jobGap }}>
+          <div key={i} style={{ marginBottom: c.jobGap, pageBreakInside: "avoid", breakInside: "avoid" }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 1 }}>
               <span style={{ fontWeight: 700, fontSize: c.fs + 0.5 }}>{job.title}</span>
               <span style={{ fontSize: c.fsTiny, color: "#999" }}>{job.duration}</span>
@@ -181,7 +181,7 @@ function ClassicPreview({ content, accentColor, fontStyle, compact, sectionOrder
       <div key="education" style={{ marginBottom: c.secGap }}>
         <p style={hStyle}>{getSectionLabel("education", content)}</p>
         {content.education.map((edu, i) => (
-          <div key={i} style={{ marginBottom: c.jobGap * 0.5 }}>
+          <div key={i} style={{ marginBottom: c.jobGap * 0.5, pageBreakInside: "avoid", breakInside: "avoid" }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span style={{ fontWeight: 700, fontSize: c.fs }}>{edu.degree}</span>
               <span style={{ fontSize: c.fsTiny, color: "#999" }}>{edu.year}</span>
@@ -213,7 +213,7 @@ function ClassicPreview({ content, accentColor, fontStyle, compact, sectionOrder
 function MinimalPreview({ content, accentColor, fontStyle, compact, sectionOrder, layout }: PreviewProps) {
   const ff = fontStyle === "serif" ? "'Times New Roman', Times, serif" : "Helvetica, 'Helvetica Neue', Arial, sans-serif";
   const c = makeCfg(compact, layout);
-  const hStyle: React.CSSProperties = { fontSize: c.fsTiny, fontWeight: 700, textTransform: "uppercase", letterSpacing: 2, color: accentColor, marginBottom: c.headerGap };
+  const hStyle: React.CSSProperties = { fontSize: c.fsTiny, fontWeight: 700, textTransform: "uppercase", letterSpacing: 2, color: accentColor, marginBottom: c.headerGap, pageBreakAfter: "avoid", breakAfter: "avoid" };
 
   const sections: Record<string, React.ReactNode> = {
     summary: content.summary ? (
@@ -223,7 +223,7 @@ function MinimalPreview({ content, accentColor, fontStyle, compact, sectionOrder
       <div key="experience" style={{ marginBottom: c.secGap }}>
         <p style={hStyle}>{getSectionLabel("experience", content)}</p>
         {content.experience.map((job, i) => (
-          <div key={i} style={{ marginBottom: c.jobGap }}>
+          <div key={i} style={{ marginBottom: c.jobGap, pageBreakInside: "avoid", breakInside: "avoid" }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 1 }}>
               <span style={{ fontWeight: 700, fontSize: c.fs + 0.5 }}>{job.title}</span>
               <span style={{ fontSize: c.fsTiny, color: "#999" }}>{job.duration}</span>
@@ -243,7 +243,7 @@ function MinimalPreview({ content, accentColor, fontStyle, compact, sectionOrder
       <div key="education" style={{ marginBottom: c.secGap }}>
         <p style={hStyle}>{getSectionLabel("education", content)}</p>
         {content.education.map((edu, i) => (
-          <div key={i} style={{ marginBottom: c.jobGap * 0.4 }}>
+          <div key={i} style={{ marginBottom: c.jobGap * 0.4, pageBreakInside: "avoid", breakInside: "avoid" }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span style={{ fontWeight: 700, fontSize: c.fs }}>{edu.degree}</span>
               <span style={{ fontSize: c.fsTiny, color: "#aaa" }}>{edu.year}</span>
@@ -274,7 +274,7 @@ function MinimalPreview({ content, accentColor, fontStyle, compact, sectionOrder
 function ATSPreview({ content, accentColor, fontStyle, compact, sectionOrder, layout }: PreviewProps) {
   const ff = fontStyle === "serif" ? "'Times New Roman', Times, serif" : "Helvetica, 'Helvetica Neue', Arial, sans-serif";
   const c = makeCfg(compact, layout);
-  const hStyle: React.CSSProperties = { fontWeight: 700, fontSize: c.fs + 1, textTransform: "uppercase", marginBottom: c.headerGap };
+  const hStyle: React.CSSProperties = { fontWeight: 700, fontSize: c.fs + 1, textTransform: "uppercase", marginBottom: c.headerGap, pageBreakAfter: "avoid", breakAfter: "avoid" };
 
   const sections: Record<string, React.ReactNode> = {
     summary: content.summary ? (
@@ -288,7 +288,7 @@ function ATSPreview({ content, accentColor, fontStyle, compact, sectionOrder, la
       <div key="experience" style={{ marginBottom: c.secGap }}>
         <p style={hStyle}>{getSectionLabel("experience", content)}</p>
         {content.experience.map((job, i) => (
-          <div key={i} style={{ marginBottom: c.jobGap }}>
+          <div key={i} style={{ marginBottom: c.jobGap, pageBreakInside: "avoid", breakInside: "avoid" }}>
             <p style={{ fontWeight: 700, fontSize: c.fs }}>{job.title}</p>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
               <span style={{ fontSize: c.fsSmall, fontStyle: "italic", color: "#333" }}>{job.company}</span>
@@ -309,7 +309,7 @@ function ATSPreview({ content, accentColor, fontStyle, compact, sectionOrder, la
       <div key="education" style={{ marginBottom: c.secGap }}>
         <p style={hStyle}>{getSectionLabel("education", content)}</p>
         {content.education.map((edu, i) => (
-          <div key={i} style={{ marginBottom: c.jobGap * 0.4 }}>
+          <div key={i} style={{ marginBottom: c.jobGap * 0.4, pageBreakInside: "avoid", breakInside: "avoid" }}>
             <p style={{ fontWeight: 700, fontSize: c.fs }}>{edu.degree}</p>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span style={{ fontSize: c.fsSmall, fontStyle: "italic", color: "#333" }}>{edu.institution}</span>
@@ -346,7 +346,7 @@ function ExecutivePreview({ content, accentColor, fontStyle, compact, sectionOrd
   const bodyOrder = sectionOrder.filter(id => id === "summary" || id === "experience" || id.startsWith("custom_"));
   const showEdu = sectionOrder.includes("education") && content.education.length > 0;
   const showSkills = sectionOrder.includes("skills") && content.skills.length > 0;
-  const hStyle: React.CSSProperties = { fontSize: c.fsTiny, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.5, color: accentColor, marginBottom: c.headerGap };
+  const hStyle: React.CSSProperties = { fontSize: c.fsTiny, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.5, color: accentColor, marginBottom: c.headerGap, pageBreakAfter: "avoid", breakAfter: "avoid" };
 
   const bodySections: Record<string, React.ReactNode> = {
     summary: content.summary ? (
@@ -360,7 +360,7 @@ function ExecutivePreview({ content, accentColor, fontStyle, compact, sectionOrd
       <div key="experience" style={{ marginBottom: c.secGap }}>
         <p style={hStyle}>{getSectionLabel("experience", content)}</p>
         {content.experience.map((job, i) => (
-          <div key={i} style={{ marginBottom: c.jobGap }}>
+          <div key={i} style={{ marginBottom: c.jobGap, pageBreakInside: "avoid", breakInside: "avoid" }}>
             <div style={{ display: "flex", alignItems: "flex-start", gap: 6, marginBottom: 1 }}>
               <div style={{ width: 3, height: c.fs + 1, backgroundColor: accentColor, flexShrink: 0, marginTop: 2 }} />
               <span style={{ flex: 1, fontWeight: 700, fontSize: c.fs + 0.5 }}>{job.title}</span>
@@ -395,7 +395,7 @@ function ExecutivePreview({ content, accentColor, fontStyle, compact, sectionOrd
               <div style={{ flex: 1 }}>
                 <p style={hStyle}>{getSectionLabel("education", content)}</p>
                 {content.education.map((edu, i) => (
-                  <div key={i} style={{ marginBottom: 6 }}>
+                  <div key={i} style={{ marginBottom: 6, pageBreakInside: "avoid", breakInside: "avoid" }}>
                     <p style={{ fontWeight: 700, fontSize: c.fs }}>{edu.degree}</p>
                     <p style={{ fontSize: c.fsTiny, fontStyle: "italic", color: "#6b7280" }}>{edu.institution}</p>
                     <p style={{ fontSize: c.fsTiny, color: accentColor }}>{edu.year}</p>
@@ -457,7 +457,7 @@ function ModernPreview({ content, accentColor, fontStyle, compact, sectionOrder,
         <div key={id} style={{ marginTop: sidebarGap }}>
           <p style={sidebarLabel}>{getSectionLabel("education", content)}</p>
           {content.education.map((edu, i) => (
-            <div key={i} style={{ marginBottom: 6 }}>
+            <div key={i} style={{ marginBottom: 6, pageBreakInside: "avoid", breakInside: "avoid" }}>
               <p style={{ fontSize: c.fsSmall - 0.5, fontWeight: 700, color: "#fff" }}>{edu.degree}</p>
               <p style={{ fontSize: c.fsTiny - 1, color: "#94a3b8" }}>{edu.institution}</p>
               <p style={{ fontSize: c.fsTiny - 1, color: accentColor }}>{edu.year}</p>
@@ -481,7 +481,7 @@ function ModernPreview({ content, accentColor, fontStyle, compact, sectionOrder,
         <div key={id} style={{ marginTop: sidebarGap }}>
           <p style={sidebarLabel}>{getSectionLabel("experience", content)}</p>
           {content.experience.map((job, i) => (
-            <div key={i} style={{ marginBottom: 6 }}>
+            <div key={i} style={{ marginBottom: 6, pageBreakInside: "avoid", breakInside: "avoid" }}>
               <p style={{ fontSize: c.fsTiny, fontWeight: 700, color: "#fff" }}>{job.title}</p>
               <p style={{ fontSize: c.fsTiny - 1, fontStyle: "italic", color: "#94a3b8", marginBottom: 2 }}>{job.company}</p>
               {job.bullets.map((b, j) => (
@@ -501,7 +501,7 @@ function ModernPreview({ content, accentColor, fontStyle, compact, sectionOrder,
         <div key={id} style={{ marginTop: sidebarGap }}>
           <p style={sidebarLabel}>{getSectionLabel(id, content)}</p>
           {custom.items.map((item, i) => (
-            <div key={i} style={{ marginBottom: 5 }}>
+            <div key={i} style={{ marginBottom: 5, pageBreakInside: "avoid", breakInside: "avoid" }}>
               <p style={{ fontSize: c.fsTiny, fontWeight: 700, color: "#fff" }}>{item.title}</p>
               {item.subtitle && <p style={{ fontSize: c.fsTiny - 1, color: "#94a3b8" }}>{item.subtitle}</p>}
               {item.bullets.map((b, j) => (
@@ -521,6 +521,7 @@ function ModernPreview({ content, accentColor, fontStyle, compact, sectionOrder,
   const mainHStyle: React.CSSProperties = {
     fontSize: c.fsTiny, fontWeight: 700, color: accentColor, textTransform: "uppercase",
     letterSpacing: 0.8, borderBottom: "0.5px solid #e2e8f0", paddingBottom: 3, marginBottom: c.headerGap,
+    pageBreakAfter: "avoid", breakAfter: "avoid",
   };
 
   const mainSections: Record<string, React.ReactNode> = {
@@ -534,7 +535,7 @@ function ModernPreview({ content, accentColor, fontStyle, compact, sectionOrder,
       <div key="experience" style={{ marginBottom: c.secGap }}>
         <p style={mainHStyle}>{getSectionLabel("experience", content)}</p>
         {content.experience.map((job, i) => (
-          <div key={i} style={{ marginBottom: c.jobGap }}>
+          <div key={i} style={{ marginBottom: c.jobGap, pageBreakInside: "avoid", breakInside: "avoid" }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 1 }}>
               <span style={{ fontWeight: 700, fontSize: c.fs + 0.5 }}>{job.title}</span>
               <span style={{ fontSize: c.fsTiny, color: "#9ca3af" }}>{job.duration}</span>
@@ -554,7 +555,7 @@ function ModernPreview({ content, accentColor, fontStyle, compact, sectionOrder,
       <div key="education" style={{ marginBottom: c.secGap }}>
         <p style={mainHStyle}>{getSectionLabel("education", content)}</p>
         {content.education.map((edu, i) => (
-          <div key={i} style={{ marginBottom: c.jobGap * 0.4 }}>
+          <div key={i} style={{ marginBottom: c.jobGap * 0.4, pageBreakInside: "avoid", breakInside: "avoid" }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span style={{ fontWeight: 700, fontSize: c.fs }}>{edu.degree}</span>
               <span style={{ fontSize: c.fsTiny, color: "#9ca3af" }}>{edu.year}</span>

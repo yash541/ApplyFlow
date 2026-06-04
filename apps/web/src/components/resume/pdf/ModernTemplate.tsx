@@ -124,7 +124,7 @@ export function ModernTemplate({ content, accentColor, fontStyle, compact, layou
   // ── Main area renders all section types in light-bg style ─────────────────
   const mainSections: Record<string, React.ReactNode> = {
     summary: !!content.summary && (
-      <View key="summary" style={{ marginBottom: c.secGap }}>
+      <View wrap={false} key="summary" style={{ marginBottom: c.secGap }}>
         <Text style={{ ...mainHeaderStyle, borderBottomWidth: 0.5, borderBottomColor: "#e2e8f0", paddingBottom: 3, marginBottom: c.headerGap }}>
           {getSectionLabel("summary", content)}
         </Text>
@@ -133,44 +133,84 @@ export function ModernTemplate({ content, accentColor, fontStyle, compact, layou
     ),
     experience: content.experience.length > 0 && (
       <View key="experience" style={{ marginBottom: c.secGap }}>
-        <Text style={{ ...mainHeaderStyle, borderBottomWidth: 0.5, borderBottomColor: "#e2e8f0", paddingBottom: 3, marginBottom: c.headerGap }}>
-          {getSectionLabel("experience", content)}
-        </Text>
-        {content.experience.map((job, i) => (
-          <View key={i} style={{ marginBottom: c.jobGap }}>
-            <View style={{ flexDirection: "row", marginBottom: 1 }}>
-              <Text style={{ flex: 1, fontSize: c.fs + 0.5, fontFamily: ff(true), color: "#111827", minWidth: 0 }}>{job.title}</Text>
-              <Text style={{ fontSize: c.fsTiny, color: "#9ca3af", flexShrink: 0 }}>{job.duration}</Text>
+        {content.experience.length > 0 ? (
+          <>
+            <View wrap={false}>
+              <Text style={{ ...mainHeaderStyle, borderBottomWidth: 0.5, borderBottomColor: "#e2e8f0", paddingBottom: 3, marginBottom: c.headerGap }}>
+                {getSectionLabel("experience", content)}
+              </Text>
+              <View style={{ marginBottom: c.jobGap }}>
+                <View style={{ flexDirection: "row", marginBottom: 1 }}>
+                  <Text style={{ flex: 1, fontSize: c.fs + 0.5, fontFamily: ff(true), color: "#111827", minWidth: 0 }}>{content.experience[0]!.title}</Text>
+                  <Text style={{ fontSize: c.fsTiny, color: "#9ca3af", flexShrink: 0 }}>{content.experience[0]!.duration}</Text>
+                </View>
+                <Text style={{ fontSize: c.fsSmall - 0.5, fontFamily: fi(), color: "#6b7280", marginBottom: 3 }}>{content.experience[0]!.company}</Text>
+                {content.experience[0]!.bullets.map((b, j) => (
+                  <View key={j} style={{ flexDirection: "row", marginBottom: c.bulletGap, paddingLeft: 4 }}>
+                    <Text style={{ fontSize: c.fsSmall, color: accentColor, width: 10, flexShrink: 0 }}>›</Text>
+                    <RichText style={{ flex: 1, fontSize: c.fsSmall, color: "#374151", minWidth: 0 }} accentColor={accentColor}>{b}</RichText>
+                  </View>
+                ))}
+              </View>
             </View>
-            <Text style={{ fontSize: c.fsSmall - 0.5, fontFamily: fi(), color: "#6b7280", marginBottom: 3 }}>{job.company}</Text>
-            {job.bullets.map((b, j) => (
-              <View key={j} style={{ flexDirection: "row", marginBottom: c.bulletGap, paddingLeft: 4 }}>
-                <Text style={{ fontSize: c.fsSmall, color: accentColor, width: 10, flexShrink: 0 }}>›</Text>
-                <RichText style={{ flex: 1, fontSize: c.fsSmall, color: "#374151", minWidth: 0 }} accentColor={accentColor}>{b}</RichText>
+            {content.experience.slice(1).map((job, i) => (
+              <View key={i + 1} wrap={false} style={{ marginBottom: c.jobGap }}>
+                <View style={{ flexDirection: "row", marginBottom: 1 }}>
+                  <Text style={{ flex: 1, fontSize: c.fs + 0.5, fontFamily: ff(true), color: "#111827", minWidth: 0 }}>{job.title}</Text>
+                  <Text style={{ fontSize: c.fsTiny, color: "#9ca3af", flexShrink: 0 }}>{job.duration}</Text>
+                </View>
+                <Text style={{ fontSize: c.fsSmall - 0.5, fontFamily: fi(), color: "#6b7280", marginBottom: 3 }}>{job.company}</Text>
+                {job.bullets.map((b, j) => (
+                  <View key={j} style={{ flexDirection: "row", marginBottom: c.bulletGap, paddingLeft: 4 }}>
+                    <Text style={{ fontSize: c.fsSmall, color: accentColor, width: 10, flexShrink: 0 }}>›</Text>
+                    <RichText style={{ flex: 1, fontSize: c.fsSmall, color: "#374151", minWidth: 0 }} accentColor={accentColor}>{b}</RichText>
+                  </View>
+                ))}
               </View>
             ))}
-          </View>
-        ))}
+          </>
+        ) : (
+          <Text style={{ ...mainHeaderStyle, borderBottomWidth: 0.5, borderBottomColor: "#e2e8f0", paddingBottom: 3, marginBottom: c.headerGap }}>
+            {getSectionLabel("experience", content)}
+          </Text>
+        )}
       </View>
     ),
     education: content.education.length > 0 && (
       <View key="education" style={{ marginBottom: c.secGap }}>
-        <Text style={{ ...mainHeaderStyle, borderBottomWidth: 0.5, borderBottomColor: "#e2e8f0", paddingBottom: 3, marginBottom: c.headerGap }}>
-          {getSectionLabel("education", content)}
-        </Text>
-        {content.education.map((edu, i) => (
-          <View key={i} style={{ marginBottom: c.jobGap * 0.5 }}>
-            <View style={{ flexDirection: "row" }}>
-              <Text style={{ flex: 1, fontFamily: ff(true), fontSize: c.fs, color: "#111827", minWidth: 0 }}>{edu.degree}</Text>
-              <Text style={{ fontSize: c.fsTiny, color: "#9ca3af", flexShrink: 0 }}>{edu.year}</Text>
+        {content.education.length > 0 ? (
+          <>
+            <View wrap={false}>
+              <Text style={{ ...mainHeaderStyle, borderBottomWidth: 0.5, borderBottomColor: "#e2e8f0", paddingBottom: 3, marginBottom: c.headerGap }}>
+                {getSectionLabel("education", content)}
+              </Text>
+              <View style={{ marginBottom: c.jobGap * 0.5 }}>
+                <View style={{ flexDirection: "row" }}>
+                  <Text style={{ flex: 1, fontFamily: ff(true), fontSize: c.fs, color: "#111827", minWidth: 0 }}>{content.education[0]!.degree}</Text>
+                  <Text style={{ fontSize: c.fsTiny, color: "#9ca3af", flexShrink: 0 }}>{content.education[0]!.year}</Text>
+                </View>
+                <Text style={{ fontSize: c.fsSmall - 0.5, fontFamily: fi(), color: "#6b7280" }}>{content.education[0]!.institution}</Text>
+              </View>
             </View>
-            <Text style={{ fontSize: c.fsSmall - 0.5, fontFamily: fi(), color: "#6b7280" }}>{edu.institution}</Text>
-          </View>
-        ))}
+            {content.education.slice(1).map((edu, i) => (
+              <View key={i + 1} wrap={false} style={{ marginBottom: c.jobGap * 0.5 }}>
+                <View style={{ flexDirection: "row" }}>
+                  <Text style={{ flex: 1, fontFamily: ff(true), fontSize: c.fs, color: "#111827", minWidth: 0 }}>{edu.degree}</Text>
+                  <Text style={{ fontSize: c.fsTiny, color: "#9ca3af", flexShrink: 0 }}>{edu.year}</Text>
+                </View>
+                <Text style={{ fontSize: c.fsSmall - 0.5, fontFamily: fi(), color: "#6b7280" }}>{edu.institution}</Text>
+              </View>
+            ))}
+          </>
+        ) : (
+          <Text style={{ ...mainHeaderStyle, borderBottomWidth: 0.5, borderBottomColor: "#e2e8f0", paddingBottom: 3, marginBottom: c.headerGap }}>
+            {getSectionLabel("education", content)}
+          </Text>
+        )}
       </View>
     ),
     skills: flattenSkills(content).length > 0 && (
-      <View key="skills" style={{ marginBottom: c.secGap }}>
+      <View wrap={false} key="skills" style={{ marginBottom: c.secGap }}>
         <Text style={{ ...mainHeaderStyle, borderBottomWidth: 0.5, borderBottomColor: "#e2e8f0", paddingBottom: 3, marginBottom: c.headerGap }}>
           {getSectionLabel("skills", content)}
         </Text>

@@ -36,27 +36,45 @@ export function CustomSectionBlock({
   if (section.items.length === 0) return null;
   return (
     <View style={{ marginBottom: secGap }}>
-      {headerBorder ? (
-        <View style={headerBorder}>
-          <Text style={{ ...headerStyle, marginBottom: 3 }}>{section.label}</Text>
-        </View>
-      ) : (
-        <Text style={{ ...headerStyle, marginBottom: headerGap }}>{section.label}</Text>
-      )}
-      {section.items.map((item, i) => (
-        <View key={i} style={{ marginBottom: itemGap }}>
-          <View style={{ flexDirection: "row", marginBottom: 1 }}>
-            <Text style={{ flex: 1, ...titleStyle, minWidth: 0 }}>{item.title}</Text>
-            {item.subtitle ? <Text style={{ ...subtitleStyle, flexShrink: 0 }}>{item.subtitle}</Text> : null}
-          </View>
-          {item.bullets.map((b, j) => (
-            <View key={j} style={{ flexDirection: "row", marginBottom: bulletGap, paddingLeft: bulletPaddingLeft }}>
-              <Text style={bulletMarkerStyle}>{bulletMarker}</Text>
-              <RichText style={bulletTextStyle} accentColor={accentColor}>{b}</RichText>
+      <>
+        {/* Heading + first entry grouped — prevents orphaned heading */}
+        <View wrap={false}>
+          {headerBorder ? (
+            <View style={headerBorder}>
+              <Text style={{ ...headerStyle, marginBottom: 3 }}>{section.label}</Text>
             </View>
-          ))}
+          ) : (
+            <Text style={{ ...headerStyle, marginBottom: headerGap }}>{section.label}</Text>
+          )}
+          <View style={{ marginBottom: itemGap }}>
+            <View style={{ flexDirection: "row", marginBottom: 1 }}>
+              <Text style={{ flex: 1, ...titleStyle, minWidth: 0 }}>{section.items[0]!.title}</Text>
+              {section.items[0]!.subtitle ? <Text style={{ ...subtitleStyle, flexShrink: 0 }}>{section.items[0]!.subtitle}</Text> : null}
+            </View>
+            {section.items[0]!.bullets.map((b, j) => (
+              <View key={j} style={{ flexDirection: "row", marginBottom: bulletGap, paddingLeft: bulletPaddingLeft }}>
+                <Text style={bulletMarkerStyle}>{bulletMarker}</Text>
+                <RichText style={bulletTextStyle} accentColor={accentColor}>{b}</RichText>
+              </View>
+            ))}
+          </View>
         </View>
-      ))}
+        {/* Remaining entries — each stays whole, can flow across pages */}
+        {section.items.slice(1).map((item, i) => (
+          <View key={i + 1} wrap={false} style={{ marginBottom: itemGap }}>
+            <View style={{ flexDirection: "row", marginBottom: 1 }}>
+              <Text style={{ flex: 1, ...titleStyle, minWidth: 0 }}>{item.title}</Text>
+              {item.subtitle ? <Text style={{ ...subtitleStyle, flexShrink: 0 }}>{item.subtitle}</Text> : null}
+            </View>
+            {item.bullets.map((b, j) => (
+              <View key={j} style={{ flexDirection: "row", marginBottom: bulletGap, paddingLeft: bulletPaddingLeft }}>
+                <Text style={bulletMarkerStyle}>{bulletMarker}</Text>
+                <RichText style={bulletTextStyle} accentColor={accentColor}>{b}</RichText>
+              </View>
+            ))}
+          </View>
+        ))}
+      </>
     </View>
   );
 }
