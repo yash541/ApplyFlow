@@ -1289,7 +1289,7 @@ export function ResumeSplitEditor() {
                 {(["email", "phone", "location", "linkedin", "github", "website"] as const).map(field => (
                   <EditableField key={field} value={content.contact[field] ?? ""} placeholder={field}
                     onSave={v => updateContact(field, v)}
-                    className="text-xs text-on-surface-variant/60" />
+                    className="text-xs text-on-surface-variant/60 truncate min-w-0" />
                 ))}
               </div>
             </div>
