@@ -1,13 +1,21 @@
 "use client";
 
+import { useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
 import { AuthGuard } from "@/components/auth/AuthGuard";
 import { UpgradeModal } from "@/components/shared/UpgradeModal";
 import { useUpgradePrompt } from "@/hooks/useUpgradePrompt";
+import { setupSyncListener } from "@/lib/sync-channel";
 
 function DashboardLayoutInner({ children }: { children: React.ReactNode }) {
   const { showUpgrade, upgradeReason, closeUpgrade } = useUpgradePrompt();
+  const queryClient = useQueryClient();
+
+  // Listen for cross-tab broadcasts and invalidate the affected query keys
+  useEffect(() => setupSyncListener(queryClient), [queryClient]);
+
   return (
     <div className="flex h-screen overflow-hidden bg-background mesh-bg">
       <Sidebar />

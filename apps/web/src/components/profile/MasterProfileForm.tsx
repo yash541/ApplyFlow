@@ -7,6 +7,7 @@ import {
   Pencil, AlertCircle, DollarSign, Zap, FileText,
 } from "lucide-react";
 import { api, type MasterProfileData, type WorkEntry, type EducationEntry, type ResumeData } from "@/lib/api";
+import { broadcastInvalidate } from "@/lib/sync-channel";
 import { API_URL } from "@/lib/config";
 import { useAuthStore } from "@/store/auth";
 
@@ -432,6 +433,7 @@ export function MasterProfileForm() {
         if (token && user) setAuth({ ...user, name: res.name }, token);
       }
       await api.profile.update(data);
+      broadcastInvalidate(["profile"]);
       setSaveState("saved");
       setTimeout(() => setSaveState("idle"), 2500);
     } catch (err) {

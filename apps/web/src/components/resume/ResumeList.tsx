@@ -9,6 +9,7 @@ import dynamic from "next/dynamic";
 import { GlassPanel } from "@applyflow/ui";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type ResumeData } from "@/lib/api";
+import { broadcastInvalidate } from "@/lib/sync-channel";
 import { useResumeLabStore, type TailoredContent } from "@/store/resumeLab";
 import { DEFAULT_SECTION_ORDER } from "./pdf/shared";
 import { UpgradeModal } from "@/components/shared/UpgradeModal";
@@ -147,7 +148,10 @@ export function ResumeList() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.resumes.delete(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["resumes"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["resumes"] });
+      broadcastInvalidate(["resumes"]);
+    },
   });
 
   // Build applicationId → ApplicationData lookup
@@ -218,6 +222,7 @@ export function ResumeList() {
       queryClient.setQueryData<{ resumes: ResumeData[] }>(["resumes"], old =>
         old ? { resumes: old.resumes.map(r => r.id === resume.id ? { ...r, downloaded: true } : r) } : old
       );
+      broadcastInvalidate(["resumes"], ["billing-usage"]);
     } catch (err) {
       const status = (err as { status?: number })?.status;
       if (status === 402) {

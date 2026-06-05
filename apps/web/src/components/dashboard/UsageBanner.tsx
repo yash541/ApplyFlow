@@ -14,7 +14,9 @@ export function UsageBanner() {
   const { data: usage } = useQuery({
     queryKey: ["billing-usage"],
     queryFn: () => api.billing.getUsage(),
-    staleTime: 60_000,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
   });
 
   // Hide if upgrade just happened (URL has ?upgraded=true) to avoid contradictory banners

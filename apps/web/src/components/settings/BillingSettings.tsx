@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Zap, Check, ExternalLink, RefreshCw, RefreshCcw } from "lucide-react";
-import { api, UsageData } from "@/lib/api";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
 import { UpgradeModal } from "@/components/shared/UpgradeModal";
 
 function UsageMeter({
@@ -60,21 +61,20 @@ function UsageMeter({
 }
 
 export function BillingSettings() {
-  const [usage, setUsage] = useState<UsageData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data: usage, isLoading: loading } = useQuery({
+    queryKey: ["billing-usage"],
+    queryFn: () => api.billing.getUsage(),
+    // Poll every 60s — catches extension-triggered increments and Stripe webhook changes
+    refetchInterval: 60_000,
+    // Refetch whenever the user switches back to this tab
+    refetchOnWindowFocus: true,
+  });
+
   const [portalLoading, setPortalLoading] = useState(false);
   const [syncLoading, setSyncLoading] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
-
-  useEffect(() => {
-    api.billing
-      .getUsage()
-      .then(setUsage)
-      .catch(() => setError("Failed to load usage data."))
-      .finally(() => setLoading(false));
-  }, []);
 
   async function handleSync() {
     setSyncLoading(true);
@@ -88,9 +88,6 @@ export function BillingSettings() {
       } else {
         setSyncMsg("No active Pro subscription found in Stripe.");
       }
-      // Re-fetch usage to reflect updated plan
-      const updated = await api.billing.getUsage();
-      setUsage(updated);
     } catch {
       setError("Could not sync with Stripe. Try again in a moment.");
     } finally {

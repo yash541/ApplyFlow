@@ -20,6 +20,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { api, rewriteBullet } from "@/lib/api";
 import { useUpgradePrompt } from "@/hooks/useUpgradePrompt";
 import { UpgradeModal } from "@/components/shared/UpgradeModal";
+import { broadcastInvalidate } from "@/lib/sync-channel";
 import {
   useResumeLabStore, type TailoredContent, type TemplateId, type FontStyle,
   type CustomSection, type EditorPrefs,
@@ -812,13 +813,15 @@ export function ResumeSplitEditor() {
         // Updating an already-saved resume
         const updated = await api.resumes.update(savedResumeId, { tailored_content, pdf_bytes });
         setEditCount(updated.edit_count ?? 0);
+        broadcastInvalidate(["resumes"]);
       } else if (activeApplicationId) {
-        // Linked to a tracked job
+        // Linked to a tracked job — first save consumes a tailor credit
         const saved = await api.resumes.saveTailored({ application_id: activeApplicationId, tailored_content, pdf_bytes });
         resumeId = saved.id;
         setSavedResumeId(saved.id);
+        broadcastInvalidate(["resumes"], ["billing-usage"]);
       } else {
-        // General resume — first save, no job link
+        // General resume — first save, no job link — consumes a tailor credit
         const saved = await api.resumes.saveTailored({
           application_id: null,
           name: generalName.trim() || `General Resume – ${new Date().toLocaleDateString()}`,
@@ -827,6 +830,7 @@ export function ResumeSplitEditor() {
         });
         resumeId = saved.id;
         setSavedResumeId(saved.id);
+        broadcastInvalidate(["resumes"], ["billing-usage"]);
       }
 
       setSaveState("saved");

@@ -6,6 +6,7 @@ import { X, ExternalLink, FileText, Sparkles, ChevronDown, ChevronUp, Loader2 } 
 import { GlassPanel, Badge } from "@applyflow/ui";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, streamTailor, type ApplicationData } from "@/lib/api";
+import { broadcastInvalidate } from "@/lib/sync-channel";
 import { useResumeLabStore, type TailoredContent } from "@/store/resumeLab";
 import type { ApplicationStatus } from "@applyflow/shared";
 
@@ -175,6 +176,7 @@ function ApplicationDrawer({ app, onClose, onStatusChange }: {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["applications"] });
       queryClient.invalidateQueries({ queryKey: ["application", app.id] });
+      broadcastInvalidate(["applications"]);
     },
   });
 
@@ -518,6 +520,7 @@ export function KanbanBoard() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["applications"] });
+      broadcastInvalidate(["applications"]);
       setShowAdd(false);
     },
   });
@@ -537,6 +540,7 @@ export function KanbanBoard() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["applications"] });
+      broadcastInvalidate(["applications"]);
       setSelectedApp(null);
     },
   });
@@ -550,14 +554,16 @@ export function KanbanBoard() {
       queryClient.setQueryData(["applications"], (old: { applications: ApplicationData[] } | undefined) => ({
         applications: (old?.applications ?? []).map((a) => a.id === id ? { ...a, status } : a),
       }));
-      // Also update selected app if it's the one being changed
       setSelectedApp((prev) => prev?.id === id ? { ...prev, status } : prev);
       return { previous };
     },
     onError: (_err, _vars, context) => {
       queryClient.setQueryData(["applications"], context?.previous);
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ["applications"] }),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["applications"] });
+      broadcastInvalidate(["applications"]);
+    },
   });
 
   const applications = data?.applications ?? [];

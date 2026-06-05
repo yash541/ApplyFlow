@@ -5,6 +5,7 @@ import { Upload, FileText, Loader2, X, Sparkles, Search, Link2, Unlink } from "l
 import { GlassPanel, Button } from "@applyflow/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, streamTailor, type ApplicationData } from "@/lib/api";
+import { broadcastInvalidate } from "@/lib/sync-channel";
 import { useResumeLabStore, type TailoredContent } from "@/store/resumeLab";
 import { createPortal } from "react-dom";
 import { UpgradeModal } from "@/components/shared/UpgradeModal";
@@ -235,6 +236,7 @@ export function ResumeUploader() {
       const resume = await api.resumes.upload(file);
       setSelectedResume(resume.content ?? "", resume.filename ?? resume.name, resume.id);
       await queryClient.invalidateQueries({ queryKey: ["resumes"] });
+      broadcastInvalidate(["resumes"]);
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Upload failed");
     } finally {
