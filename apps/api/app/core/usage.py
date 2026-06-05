@@ -23,6 +23,9 @@ FREE_LIMITS = {
 # Resume downloads: 1 lifetime (stored as total_downloads on User)
 FREE_DOWNLOAD_LIMIT = 1
 
+# Max re-saves (edits) per tailored resume for free users
+FREE_EDIT_LIMIT = 3
+
 
 def _current_month() -> str:
     """Return the current month key in 'YYYY-MM' format (UTC)."""

@@ -25,6 +25,7 @@ def _serialize_list(r: Resume) -> dict:
         "filename": r.filename,
         "ats_score": r.ats_score,
         "application_id": str(r.application_id) if r.application_id else None,
+        "edit_count": r.edit_count,
         "created_at": r.created_at.isoformat(),
         "updated_at": r.updated_at.isoformat() if r.updated_at else r.created_at.isoformat(),
     }
@@ -208,6 +209,8 @@ async def update_resume(
     db: AsyncSession = Depends(get_db),
 ):
     """Update a resume's tailored_content and/or name (called by the editor Save button)."""
+    from app.core.usage import FREE_EDIT_LIMIT
+
     result = await db.execute(
         select(Resume).where(
             Resume.id == uuid.UUID(resume_id),
@@ -218,6 +221,18 @@ async def update_resume(
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
 
+    # Gate edits for free users — pro users have unlimited edits
+    if current_user.plan != "pro" and resume.edit_count >= FREE_EDIT_LIMIT:
+        raise HTTPException(
+            status_code=402,
+            detail={
+                "code": "edit_limit_exceeded",
+                "edit_count": resume.edit_count,
+                "limit": FREE_EDIT_LIMIT,
+                "message": f"Free accounts are limited to {FREE_EDIT_LIMIT} edits per resume. Upgrade to Pro for unlimited editing.",
+            },
+        )
+
     if request.tailored_content is not None:
         resume.tailored_content = request.tailored_content
         ats = request.tailored_content.get("ats_score")
@@ -227,6 +242,8 @@ async def update_resume(
         resume.name = request.name
     if request.pdf_bytes is not None:
         resume.pdf_bytes = request.pdf_bytes
+
+    resume.edit_count += 1
 
     await db.flush()
     await db.refresh(resume)

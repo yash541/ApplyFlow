@@ -517,6 +517,17 @@ export function ResumeSplitEditor() {
   const latestBlobRef = useRef<Blob | null>(null);
   const [blobReady, setBlobReady] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  // edit_count for the currently open resume — null until known
+  const [editCount, setEditCount] = useState<number | null>(null);
+  const FREE_EDIT_LIMIT = 3;
+
+  // Fetch edit_count when opening an existing saved resume
+  useEffect(() => {
+    if (!savedResumeId) { setEditCount(null); return; }
+    api.resumes.get(savedResumeId)
+      .then(r => setEditCount(r.edit_count ?? 0))
+      .catch(() => setEditCount(null));
+  }, [savedResumeId]);
   const [zoom, setZoom] = useState(1.0);
   // Name for general (unlinked) resumes — shown as editable input in toolbar
   const [generalName, setGeneralName] = useState(
@@ -799,7 +810,8 @@ export function ResumeSplitEditor() {
 
       if (savedResumeId) {
         // Updating an already-saved resume
-        await api.resumes.update(savedResumeId, { tailored_content, pdf_bytes });
+        const updated = await api.resumes.update(savedResumeId, { tailored_content, pdf_bytes });
+        setEditCount(updated.edit_count ?? 0);
       } else if (activeApplicationId) {
         // Linked to a tracked job
         const saved = await api.resumes.saveTailored({ application_id: activeApplicationId, tailored_content, pdf_bytes });
@@ -957,11 +969,25 @@ export function ResumeSplitEditor() {
                 title="Name for this general resume"
               />
             )}
+            {/* Edit limit badge — shown once we know the count on an existing resume */}
+            {savedResumeId && editCount !== null && editCount < FREE_EDIT_LIMIT && (
+              <span className="text-[10px] text-on-surface-variant/40 font-medium">
+                {FREE_EDIT_LIMIT - editCount} edit{FREE_EDIT_LIMIT - editCount === 1 ? "" : "s"} left
+              </span>
+            )}
             <button
-              onClick={() => void handleSave()}
+              onClick={() => {
+                if (savedResumeId && editCount !== null && editCount >= FREE_EDIT_LIMIT) {
+                  openUpgrade("You've used all 3 free edits on this resume. Upgrade to Pro for unlimited editing.");
+                  return;
+                }
+                void handleSave();
+              }}
               disabled={saveState === "saving"}
               className={`h-8 px-4 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all disabled:opacity-50 border
-                ${saveState === "saved"
+                ${savedResumeId && editCount !== null && editCount >= FREE_EDIT_LIMIT
+                  ? "bg-amber-500/10 border-amber-500/25 text-amber-400 hover:bg-amber-500/20"
+                  : saveState === "saved"
                   ? "bg-green-500/15 border-green-500/30 text-green-400"
                   : saveState === "error"
                   ? "bg-error/15 border-error/30 text-error"
@@ -973,6 +999,8 @@ export function ResumeSplitEditor() {
                 ? <><Check className="h-3.5 w-3.5" /> Saved</>
                 : saveState === "error"
                 ? "Save failed — retry"
+                : savedResumeId && editCount !== null && editCount >= FREE_EDIT_LIMIT
+                ? "Upgrade to edit"
                 : <><Save className="h-3.5 w-3.5" /> Save</>
               }
             </button>

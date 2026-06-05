@@ -73,6 +73,8 @@ class Resume(Base):
 
     # base64-encoded PDF — set when user saves a tailored resume from the editor
     pdf_bytes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Number of times this tailored resume has been re-saved after first creation
+    edit_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
