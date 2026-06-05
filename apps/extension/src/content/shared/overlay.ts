@@ -174,8 +174,16 @@ export function updateOverlayScore(finalScore: number, scoreBasis: string): void
           const ago = days === 0 ? "today" : days === 1 ? "yesterday" : `${days}d ago`;
           const badge = document.createElement("span");
           badge.className = "af-revisit-label";
-          badge.style.cssText = "display:block;font-size:10px;color:rgba(255,255,255,0.28);margin-top:3px;letter-spacing:0.02em;";
-          badge.textContent = `· Seen ${ago}`;
+          badge.style.cssText = [
+            "display:inline-flex;align-items:center;gap:4px",
+            "background:rgba(255,255,255,0.06)",
+            "border:1px solid rgba(255,255,255,0.10)",
+            "color:rgba(255,255,255,0.50)",
+            "font-size:10px;font-weight:500",
+            "padding:2px 7px;border-radius:20px",
+            "margin-top:5px;letter-spacing:0.02em",
+          ].join(";");
+          badge.textContent = `👁 Seen ${ago}`;
           const tier2 = _tierEl();
           if (tier2) tier2.insertAdjacentElement("afterend", badge);
         }
