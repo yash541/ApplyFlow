@@ -252,18 +252,6 @@ export function ResumeUploader() {
   const handleTailor = async () => {
     if (!selectedContent || !jobDesc.trim()) return;
 
-    // Check usage before starting — the tailor endpoint is gated on the backend
-    // but we want to show a nice modal instead of a raw 402 error.
-    try {
-      const usage = await api.billing.getUsage();
-      if (usage.plan === "free") {
-        openUpgrade("AI Resume Tailoring is a Pro feature. Upgrade to unlock unlimited tailoring.");
-        return;
-      }
-    } catch {
-      // If usage check fails, let the backend gate it
-    }
-
     setStreamPreview("");
     setTailoredContent(null);
     setIsTailoring(true);
