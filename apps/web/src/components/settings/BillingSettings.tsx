@@ -9,17 +9,19 @@ function UsageMeter({
   label,
   used,
   limit,
+  period = "monthly",
 }: {
   label: string;
   used: number;
   limit: number | null;
+  period?: "monthly" | "lifetime";
 }) {
   if (limit === null) {
     return (
-      <div className="space-y-1">
-        <div className="flex justify-between text-label-sm">
+      <div className="space-y-1.5">
+        <div className="flex justify-between items-baseline text-label-sm">
           <span className="text-on-surface-variant">{label}</span>
-          <span className="text-primary font-medium">Unlimited</span>
+          <span className="text-primary font-semibold">Unlimited</span>
         </div>
         <div className="h-1.5 rounded-full bg-primary/20">
           <div className="h-full w-full rounded-full bg-primary/40" />
@@ -30,19 +32,22 @@ function UsageMeter({
 
   const pct = Math.min((used / limit) * 100, 100);
   const color =
-    pct >= 90
-      ? "bg-red-400"
-      : pct >= 60
-      ? "bg-amber-400"
-      : "bg-primary";
+    pct >= 90 ? "bg-red-400" :
+    pct >= 60 ? "bg-amber-400" :
+    "bg-primary";
 
   return (
-    <div className="space-y-1">
-      <div className="flex justify-between text-label-sm">
+    <div className="space-y-1.5">
+      <div className="flex justify-between items-baseline text-label-sm">
         <span className="text-on-surface-variant">{label}</span>
-        <span className="text-on-surface">
-          {used} / {limit}
-        </span>
+        <div className="flex items-baseline gap-1.5">
+          <span className={pct >= 90 ? "text-red-400 font-semibold" : "text-on-surface"}>
+            {used} / {limit}
+          </span>
+          <span className="text-[10px] text-on-surface-variant/40">
+            {period === "lifetime" ? "lifetime" : "this month"}
+          </span>
+        </div>
       </div>
       <div className="h-1.5 rounded-full bg-white/10">
         <div
@@ -195,36 +200,50 @@ export function BillingSettings() {
 
         {/* Usage meters */}
         {!loading && usage && (
-          <div className="space-y-4">
-            <p className="text-label-sm font-medium text-on-surface-variant uppercase tracking-wide">
-              This month&apos;s usage
-            </p>
-            <UsageMeter
-              label="AI Autofill Sessions"
-              used={usage.autofill_used}
-              limit={usage.autofill_limit}
-            />
-            <UsageMeter
-              label="Job Match Scores"
-              used={usage.score_used}
-              limit={usage.score_limit}
-            />
-            <UsageMeter
-              label="AI Resume Tailors"
-              used={usage.tailor_used}
-              limit={usage.tailor_limit}
-            />
-            <UsageMeter
-              label="Resume Downloads (lifetime)"
-              used={usage.downloads_used}
-              limit={usage.downloads_limit}
-            />
+          <div className="space-y-5">
+            {/* Monthly counters */}
+            <div className="space-y-3">
+              <p className="text-[10px] font-semibold text-on-surface-variant/50 uppercase tracking-wider">
+                This month&apos;s usage
+              </p>
+              <UsageMeter
+                label="AI Autofill Sessions"
+                used={usage.autofill_used}
+                limit={usage.autofill_limit}
+                period="monthly"
+              />
+              <UsageMeter
+                label="Job Match Scores"
+                used={usage.score_used}
+                limit={usage.score_limit}
+                period="monthly"
+              />
+              <UsageMeter
+                label="AI Resume Tailors"
+                used={usage.tailor_used}
+                limit={usage.tailor_limit}
+                period="monthly"
+              />
+            </div>
+
+            {/* Lifetime counters */}
+            <div className="space-y-3">
+              <p className="text-[10px] font-semibold text-on-surface-variant/50 uppercase tracking-wider">
+                Lifetime usage
+              </p>
+              <UsageMeter
+                label="Resume Downloads"
+                used={usage.downloads_used}
+                limit={usage.downloads_limit}
+                period="lifetime"
+              />
+            </div>
           </div>
         )}
 
         {loading && (
           <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
+            {[1, 2, 3, 4].map((i) => (
               <div key={i} className="space-y-1.5">
                 <div className="h-4 w-40 rounded bg-white/5 animate-pulse" />
                 <div className="h-1.5 w-full rounded-full bg-white/5 animate-pulse" />
