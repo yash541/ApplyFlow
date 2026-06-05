@@ -119,6 +119,7 @@ export function updateOverlayScore(finalScore: number, scoreBasis: string): void
 
   // Limit exceeded — stop animation, show lock icon + upgrade prompt
   if (scoreBasis === "limit_exceeded") {
+    _animCurrent = 0; // reset so save-button handler can't pick up stale count-up value
     const s = _scoreEl(); const b = _bubbleEl(); const t = _tierEl();
     if (s) { s.textContent = "🔒"; s.style.fontSize = "18px"; }
     if (b) b.textContent = "🔒";
