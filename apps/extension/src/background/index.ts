@@ -828,7 +828,7 @@ async function recordObservation(payload: {
 async function getResumePdfBytes(resumeId: string) {
   try {
     if (!await getToken()) return null;
-    const res = await authedFetch(`${API_BASE}/api/v1/resumes/${resumeId}/pdf-bytes`);
+    const res = await authedFetch(`${API_BASE}/api/v1/resumes/${resumeId}/pdf-bytes?extension=true`);
     if (!res.ok) return null;
     return await res.json();
   } catch {

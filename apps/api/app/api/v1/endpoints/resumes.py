@@ -1,6 +1,6 @@
 import io
 import uuid
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -229,6 +229,7 @@ async def update_resume(
 @router.get("/{resume_id}/pdf-bytes")
 async def get_resume_pdf_bytes(
     resume_id: str,
+    extension: bool = Query(False),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -236,8 +237,7 @@ async def get_resume_pdf_bytes(
 
     Gates the download for free users (1 lifetime) and increments the counter.
     Pro users: unlimited downloads.
-    Extension file-upload calls also go through this endpoint — they are not
-    counted as user downloads (they pass ?extension=true to skip the gate).
+    Extension calls pass ?extension=true to skip the gate (not a user-initiated download).
     """
     result = await db.execute(
         select(Resume).where(
@@ -249,8 +249,8 @@ async def get_resume_pdf_bytes(
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
 
-    # Gate download for free users (only for tailored resumes — base resume is always free)
-    if resume.type == "tailored":
+    # Gate download for free users (only tailored resumes, only user-initiated downloads)
+    if resume.type == "tailored" and not extension:
         from app.core.usage import check_and_increment_download
         await check_and_increment_download(current_user, db)
         await db.commit()

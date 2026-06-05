@@ -871,13 +871,12 @@ export function ResumeSplitEditor() {
     const filename = (content?.name ?? generalName.trim() ?? "resume")
       .replace(/[^a-zA-Z0-9-_ ]/g, "");
 
+    // Resolve usage once — covers both saved and pre-save paths
+    const usage = cachedUsage ?? await api.billing.getUsage().catch(() => null);
+    const limitHit = usage && usage.downloads_limit !== null && usage.downloads_used >= (usage.downloads_limit ?? 1);
+
     if (savedResumeId) {
-      // Check cached usage instantly (pre-fetched on mount) — zero wait
-      const usage = cachedUsage ?? await api.billing.getUsage().catch(() => null);
-      if (usage && usage.downloads_limit !== null && usage.downloads_used >= (usage.downloads_limit ?? 1)) {
-        openUpgrade("resume_downloads");
-        return;
-      }
+      if (limitHit) { openUpgrade("resume_downloads"); return; }
 
       setDownloadState("downloading");
 
@@ -892,15 +891,21 @@ export function ResumeSplitEditor() {
         const a = document.createElement("a");
         a.href = url; a.download = `${filename}.pdf`; a.click();
         URL.revokeObjectURL(url);
+        // Keep cache in sync so a second click in the same session hits the modal instantly
+        setCachedUsage(prev => prev ? { ...prev, downloads_used: prev.downloads_used + 1 } : prev);
       } catch (err: unknown) {
         if ((err as { status?: number })?.status === 402) {
           openUpgrade("resume_downloads");
+          setCachedUsage(prev => prev && prev.downloads_limit !== null
+            ? { ...prev, downloads_used: prev.downloads_limit }
+            : prev);
         }
       } finally {
         setDownloadState("idle");
       }
     } else {
-      // Not yet saved → in-memory blob, no gate (just a preview download)
+      // Not yet saved → in-memory blob (preview). Still gate users who've hit their limit.
+      if (limitHit) { openUpgrade("resume_downloads"); return; }
       const blob = latestBlobRef.current;
       if (!blob) return;
       const url = URL.createObjectURL(blob);
