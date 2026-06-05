@@ -515,6 +515,7 @@ export function ResumeSplitEditor() {
   }
 
   const { showUpgrade, upgradeReason, openUpgrade, closeUpgrade } = useUpgradePrompt();
+  const [pendingRedirect, setPendingRedirect] = useState<{ jobUrl: string; company: string; role: string } | null>(null);
   const latestBlobRef = useRef<Blob | null>(null);
   const [blobReady, setBlobReady] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -841,7 +842,7 @@ export function ResumeSplitEditor() {
         return;
       }
 
-      // If opened from a job card (has application link), notify + redirect back
+      // If opened from a job card (has application link), notify + show redirect modal
       if (activeApplicationId && resumeId) {
         try {
           const app = await api.applications.get(activeApplicationId);
@@ -857,7 +858,7 @@ export function ResumeSplitEditor() {
           if (app.job_url) {
             // Small delay so the content script can write to storage before we navigate
             await new Promise(r => setTimeout(r, 300));
-            window.location.href = app.job_url;
+            setPendingRedirect({ jobUrl: app.job_url, company: app.company, role: app.role });
             return;
           }
         } catch {
@@ -917,6 +918,45 @@ export function ResumeSplitEditor() {
   return (
     <>
     <UpgradeModal open={showUpgrade} onClose={closeUpgrade} reason={upgradeReason} />
+
+    {/* Post-save redirect choice — only for job-linked resumes */}
+    {pendingRedirect && createPortal(
+      <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+        <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0f0f1f] shadow-2xl p-6 space-y-5">
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-xl bg-green-500/15 border border-green-500/25 flex items-center justify-center shrink-0">
+              <Check className="h-4.5 w-4.5 text-green-400" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-white/90">Resume saved!</p>
+              <p className="text-xs text-white/45 mt-0.5">
+                Tailored for <span className="text-white/65">{pendingRedirect.role}</span> at <span className="text-white/65">{pendingRedirect.company}</span>
+              </p>
+            </div>
+          </div>
+          <p className="text-xs text-white/50 leading-relaxed">
+            Where would you like to go next?
+          </p>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => { window.location.href = pendingRedirect.jobUrl; }}
+              className="w-full h-9 rounded-xl text-xs font-semibold bg-primary/90 hover:bg-primary text-white transition-all flex items-center justify-center gap-2"
+            >
+              <ArrowLeft className="h-3.5 w-3.5 rotate-180" />
+              Proceed to job page
+            </button>
+            <button
+              onClick={() => { setPendingRedirect(null); setTailoredContent(null); }}
+              className="w-full h-9 rounded-xl text-xs font-medium border border-white/10 text-white/60 hover:text-white hover:bg-white/5 transition-all"
+            >
+              Back to Resume Lab
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    )}
+
     <div className="-m-6 flex h-[calc(100vh-3.5rem)] overflow-hidden">
 
       {/* ── Left: PDF Preview ─────────────────────────────────────────────── */}

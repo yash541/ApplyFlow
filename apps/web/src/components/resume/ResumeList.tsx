@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import {
   FileText, Trash2, Clock, Wand2, Sparkles, Pencil,
   Eye, Lock, X, Loader2, Download,
@@ -134,6 +135,7 @@ export function ResumeList() {
   const [viewLoadingId, setViewLoadingId] = useState<string | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [confirmDownload, setConfirmDownload] = useState<ResumeData | null>(null);
 
   const { data: resumeData, isLoading: resumesLoading } = useQuery({
     queryKey: ["resumes"],
@@ -335,7 +337,7 @@ export function ResumeList() {
                     onUse={() => {}}
                     onEdit={() => void handleEdit(resume)}
                     onView={() => void handleView(resume)}
-                    onDownload={() => void handleDownload(resume)}
+                    onDownload={() => resume.downloaded ? setConfirmDownload(resume) : void handleDownload(resume)}
                     onDelete={() => deleteMutation.mutate(resume.id)}
                   />
                 ))}
@@ -361,7 +363,7 @@ export function ResumeList() {
                     onUse={() => {}}
                     onEdit={() => void handleEdit(resume)}
                     onView={() => void handleView(resume)}
-                    onDownload={() => void handleDownload(resume)}
+                    onDownload={() => resume.downloaded ? setConfirmDownload(resume) : void handleDownload(resume)}
                     onDelete={() => deleteMutation.mutate(resume.id)}
                   />
                 ))}
@@ -373,6 +375,35 @@ export function ResumeList() {
 
       {viewPayload && (
         <ResumeViewerModal payload={viewPayload} onClose={() => setViewPayload(null)} />
+      )}
+
+      {/* Download-again confirmation modal */}
+      {confirmDownload && createPortal(
+        <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0f0f1f] shadow-2xl p-6 space-y-4">
+            <div className="space-y-1.5">
+              <h3 className="text-sm font-semibold text-white/90">Download again?</h3>
+              <p className="text-xs text-white/50 leading-relaxed">
+                You&apos;ve already downloaded <span className="text-white/70 font-medium">{confirmDownload.name}</span>. Downloading again will use one of your remaining download credits.
+              </p>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setConfirmDownload(null)}
+                className="h-8 px-4 rounded-lg text-xs text-white/50 hover:text-white/80 hover:bg-white/5 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { void handleDownload(confirmDownload); setConfirmDownload(null); }}
+                className="h-8 px-4 rounded-lg text-xs font-semibold bg-primary/90 hover:bg-primary text-white transition-all flex items-center gap-1.5"
+              >
+                <Download className="h-3 w-3" /> Download anyway
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </>
   );
