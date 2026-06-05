@@ -18,6 +18,8 @@ import {
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { api, rewriteBullet } from "@/lib/api";
+import { useUpgradePrompt } from "@/hooks/useUpgradePrompt";
+import { UpgradeModal } from "@/components/shared/UpgradeModal";
 import {
   useResumeLabStore, type TailoredContent, type TemplateId, type FontStyle,
   type CustomSection, type EditorPrefs,
@@ -511,6 +513,7 @@ export function ResumeSplitEditor() {
     setEditorPrefs({ columnMap: next });
   }
 
+  const { showUpgrade, upgradeReason, openUpgrade, closeUpgrade } = useUpgradePrompt();
   const latestBlobRef = useRef<Blob | null>(null);
   const [blobReady, setBlobReady] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -847,9 +850,14 @@ export function ResumeSplitEditor() {
       }
 
       setTimeout(() => setSaveState("idle"), 2500);
-    } catch {
-      setSaveState("error");
-      setTimeout(() => setSaveState("idle"), 3000);
+    } catch (err: unknown) {
+      if ((err as { status?: number })?.status === 402) {
+        setSaveState("idle");
+        openUpgrade("You've used all 5 free resume tailors this month. Upgrade to Pro for unlimited tailoring.");
+      } else {
+        setSaveState("error");
+        setTimeout(() => setSaveState("idle"), 3000);
+      }
     }
   }
 
@@ -891,6 +899,8 @@ export function ResumeSplitEditor() {
   const customSections = content.customSections ?? [];
 
   return (
+    <>
+    <UpgradeModal open={showUpgrade} onClose={closeUpgrade} reason={upgradeReason} />
     <div className="-m-6 flex h-[calc(100vh-3.5rem)] overflow-hidden">
 
       {/* ── Left: PDF Preview ─────────────────────────────────────────────── */}
@@ -1555,5 +1565,6 @@ export function ResumeSplitEditor() {
         </div>
       </div>
     </div>
+    </>
   );
 }

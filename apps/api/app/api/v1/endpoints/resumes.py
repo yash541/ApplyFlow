@@ -162,12 +162,16 @@ async def save_tailored_resume(
         )
         resume = existing_result.scalar_one_or_none()
         if resume:
+            # Re-save of existing tailored resume — free, no credit consumed
             resume.tailored_content = request.tailored_content
             resume.name = name
             resume.ats_score = ats
             if request.pdf_bytes is not None:
                 resume.pdf_bytes = request.pdf_bytes
         else:
+            # First save for this application — consume one tailor credit
+            from app.core.usage import check_and_increment_usage
+            await check_and_increment_usage(current_user, db, "tailor_sessions")
             resume = Resume(
                 user_id=current_user.id, type="tailored", name=name,
                 tailored_content=request.tailored_content,
@@ -181,6 +185,9 @@ async def save_tailored_resume(
         if not name:
             raise HTTPException(status_code=422, detail="name is required for general resumes")
 
+        # Always a new resume — consume one tailor credit
+        from app.core.usage import check_and_increment_usage
+        await check_and_increment_usage(current_user, db, "tailor_sessions")
         resume = Resume(
             user_id=current_user.id, type="tailored", name=name,
             tailored_content=request.tailored_content,

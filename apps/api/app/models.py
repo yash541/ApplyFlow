@@ -185,6 +185,7 @@ class UserUsage(Base):
     month: Mapped[str] = mapped_column(String(7), nullable=False, index=True)
     autofill_sessions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     match_scores: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tailor_sessions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     __table_args__ = (UniqueConstraint("user_id", "month", name="uq_user_usage_user_month"),)
 

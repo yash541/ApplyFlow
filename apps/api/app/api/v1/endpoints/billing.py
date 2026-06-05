@@ -38,6 +38,8 @@ class UsageResponse(BaseModel):
     autofill_limit: int | None   # None = unlimited (pro)
     score_used: int
     score_limit: int | None
+    tailor_used: int
+    tailor_limit: int | None
     downloads_used: int
     downloads_limit: int | None
 
@@ -268,6 +270,8 @@ async def get_usage(
             autofill_limit=0,
             score_used=0,
             score_limit=0,
+            tailor_used=0,
+            tailor_limit=0,
             downloads_used=current_user.total_downloads,
             downloads_limit=0,
         )
@@ -278,6 +282,8 @@ async def get_usage(
         autofill_limit=None if is_pro else FREE_LIMITS["autofill_sessions"],
         score_used=usage_row.match_scores,
         score_limit=None if is_pro else FREE_LIMITS["match_scores"],
+        tailor_used=usage_row.tailor_sessions,
+        tailor_limit=None if is_pro else FREE_LIMITS["tailor_sessions"],
         downloads_used=current_user.total_downloads,
         downloads_limit=None if is_pro else FREE_DOWNLOAD_LIMIT,
     )

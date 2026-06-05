@@ -210,6 +210,11 @@ export function BillingSettings() {
               limit={usage.score_limit}
             />
             <UsageMeter
+              label="AI Resume Tailors"
+              used={usage.tailor_used}
+              limit={usage.tailor_limit}
+            />
+            <UsageMeter
               label="Resume Downloads (lifetime)"
               used={usage.downloads_used}
               limit={usage.downloads_limit}

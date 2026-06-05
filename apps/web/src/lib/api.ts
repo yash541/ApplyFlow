@@ -43,6 +43,8 @@ export interface UsageData {
   autofill_limit: number | null;  // null = unlimited (pro)
   score_used: number;
   score_limit: number | null;
+  tailor_used: number;
+  tailor_limit: number | null;
   downloads_used: number;
   downloads_limit: number | null;
 }

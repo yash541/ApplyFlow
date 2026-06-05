@@ -17,6 +17,7 @@ from app.models import User, UserUsage
 FREE_LIMITS = {
     "autofill_sessions": 10,
     "match_scores": 10,
+    "tailor_sessions": 5,
 }
 
 # Resume downloads: 1 lifetime (stored as total_downloads on User)
