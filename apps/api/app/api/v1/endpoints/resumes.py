@@ -26,6 +26,7 @@ def _serialize_list(r: Resume) -> dict:
         "ats_score": r.ats_score,
         "application_id": str(r.application_id) if r.application_id else None,
         "edit_count": r.edit_count,
+        "downloaded": r.downloaded,
         "created_at": r.created_at.isoformat(),
         "updated_at": r.updated_at.isoformat() if r.updated_at else r.created_at.isoformat(),
     }
@@ -277,6 +278,8 @@ async def get_resume_pdf_bytes(
     if resume.type == "tailored" and not extension:
         from app.core.usage import check_and_increment_download
         await check_and_increment_download(current_user, db)
+        # Mark resume as downloaded so the UI can show a badge
+        resume.downloaded = True
         await db.commit()
 
     return {"pdf_bytes": resume.pdf_bytes}

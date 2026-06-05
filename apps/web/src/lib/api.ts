@@ -108,6 +108,7 @@ export interface ResumeData {
   ats_score: number | null;
   application_id: string | null;
   edit_count: number;
+  downloaded: boolean;
   created_at: string;
   updated_at: string;
   // Only present on detail endpoints

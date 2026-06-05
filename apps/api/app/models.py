@@ -75,6 +75,8 @@ class Resume(Base):
     pdf_bytes: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Number of times this tailored resume has been re-saved after first creation
     edit_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # True once the user has downloaded this resume as a PDF at least once
+    downloaded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

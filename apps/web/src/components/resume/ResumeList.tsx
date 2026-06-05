@@ -214,6 +214,10 @@ export function ResumeList() {
       a.download = `${resume.name.replace(/[^a-zA-Z0-9-_ ]/g, "")}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
+      // Reflect downloaded=true immediately without waiting for a refetch
+      queryClient.setQueryData<{ resumes: ResumeData[] }>(["resumes"], old =>
+        old ? { resumes: old.resumes.map(r => r.id === resume.id ? { ...r, downloaded: true } : r) } : old
+      );
     } catch (err) {
       const status = (err as { status?: number })?.status;
       if (status === 402) {
@@ -426,6 +430,12 @@ function ResumeRow({
           </span>
           {isTailored && resume.ats_score != null && (
             <AtsChip score={resume.ats_score} />
+          )}
+          {/* Downloaded badge */}
+          {isTailored && resume.downloaded && (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-emerald-500/12 text-emerald-400 border border-emerald-500/20">
+              ↓ Downloaded
+            </span>
           )}
           {/* Application status pill */}
           {appStatus && (
