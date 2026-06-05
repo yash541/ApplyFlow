@@ -13,12 +13,11 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   Save, Loader2, Pencil, Check, X, GripVertical, Eye, EyeOff,
   ArrowLeft, Sparkles, AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Plus,
-  SlidersHorizontal, Trash2, Download,
+  SlidersHorizontal, Trash2,
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { api, rewriteBullet } from "@/lib/api";
-import { useUpgradePrompt } from "@/hooks/useUpgradePrompt";
 import {
   useResumeLabStore, type TailoredContent, type TemplateId, type FontStyle,
   type CustomSection, type EditorPrefs,
@@ -516,14 +515,6 @@ export function ResumeSplitEditor() {
   const [blobReady, setBlobReady] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [zoom, setZoom] = useState(1.0);
-  const [downloadState, setDownloadState] = useState<"idle" | "downloading">("idle");
-  // Pre-fetch usage on mount so Download limit check is instant when clicked
-  const [cachedUsage, setCachedUsage] = useState<{ downloads_used: number; downloads_limit: number | null } | null>(null);
-  useEffect(() => {
-    api.billing.getUsage()
-      .then(u => setCachedUsage({ downloads_used: u.downloads_used, downloads_limit: u.downloads_limit }))
-      .catch(() => {});
-  }, []);
   // Name for general (unlinked) resumes — shown as editable input in toolbar
   const [generalName, setGeneralName] = useState(
     `General Resume – ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
@@ -862,59 +853,6 @@ export function ResumeSplitEditor() {
     }
   }
 
-  // ── Download PDF ─────────────────────────────────────────────────────────
-  // If the resume is saved, go through the API (which gates free-tier downloads).
-  // If not yet saved, use the in-memory blob (unsaved work = always free to preview).
-  const { openUpgrade, closeUpgrade } = useUpgradePrompt();
-
-  async function handleDownload() {
-    const filename = (content?.name ?? generalName.trim() ?? "resume")
-      .replace(/[^a-zA-Z0-9-_ ]/g, "");
-
-    // Resolve usage once — covers both saved and pre-save paths
-    const usage = cachedUsage ?? await api.billing.getUsage().catch(() => null);
-    const limitHit = usage && usage.downloads_limit !== null && usage.downloads_used >= (usage.downloads_limit ?? 1);
-
-    if (savedResumeId) {
-      if (limitHit) { openUpgrade("resume_downloads"); return; }
-
-      setDownloadState("downloading");
-
-      try {
-        const { pdf_bytes } = await api.resumes.getPdfBytes(savedResumeId);
-        if (!pdf_bytes) return;
-        const binary = atob(pdf_bytes);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-        const blob = new Blob([bytes], { type: "application/pdf" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url; a.download = `${filename}.pdf`; a.click();
-        URL.revokeObjectURL(url);
-        // Keep cache in sync so a second click in the same session hits the modal instantly
-        setCachedUsage(prev => prev ? { ...prev, downloads_used: prev.downloads_used + 1 } : prev);
-      } catch (err: unknown) {
-        if ((err as { status?: number })?.status === 402) {
-          openUpgrade("resume_downloads");
-          setCachedUsage(prev => prev && prev.downloads_limit !== null
-            ? { ...prev, downloads_used: prev.downloads_limit }
-            : prev);
-        }
-      } finally {
-        setDownloadState("idle");
-      }
-    } else {
-      // Not yet saved → in-memory blob (preview). Still gate users who've hit their limit.
-      if (limitHit) { openUpgrade("resume_downloads"); return; }
-      const blob = latestBlobRef.current;
-      if (!blob) return;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = `${filename}.pdf`; a.click();
-      URL.revokeObjectURL(url);
-    }
-  }
-
   // ── DnD ──────────────────────────────────────────────────────────────────
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   function handleDragEnd(event: DragEndEvent) {
@@ -999,19 +937,6 @@ export function ResumeSplitEditor() {
                 {compact ? "Compact on" : "Fit to 1 page"}
               </button>
             )}
-            {/* Download button — always visible once PDF is ready */}
-            <button
-              onClick={() => void handleDownload()}
-              disabled={!blobReady || downloadState === "downloading"}
-              title="Download PDF"
-              className="h-8 px-3 rounded-lg border border-white/15 text-xs font-medium flex items-center gap-1.5 text-white/60 hover:text-white hover:bg-white/8 hover:border-white/25 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              {downloadState === "downloading"
-                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Downloading…</>
-                : <><Download className="h-3.5 w-3.5" /> Download</>
-              }
-            </button>
-
             {/* Name input for general (unlinked) resumes */}
             {!activeApplicationId && !savedResumeId && (
               <input

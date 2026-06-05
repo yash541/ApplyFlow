@@ -132,6 +132,7 @@ export function ResumeList() {
   const [viewPayload, setViewPayload] = useState<ViewPayload | null>(null);
   const [viewLoadingId, setViewLoadingId] = useState<string | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const { data: resumeData, isLoading: resumesLoading } = useQuery({
     queryKey: ["resumes"],
@@ -199,9 +200,8 @@ export function ResumeList() {
   }
 
   async function handleDownload(resume: ResumeData) {
+    setDownloadingId(resume.id);
     try {
-      // Check download limit — the backend gates and increments total_downloads
-      // by returning 402 if exceeded; we surface that as an upgrade prompt.
       const { pdf_bytes } = await api.resumes.getPdfBytes(resume.id);
       if (!pdf_bytes) return;
       const binary = atob(pdf_bytes);
@@ -217,8 +217,10 @@ export function ResumeList() {
     } catch (err) {
       const status = (err as { status?: number })?.status;
       if (status === 402) {
-        openUpgrade("You've used your 1 free resume download. Upgrade to Pro for unlimited downloads.");
+        openUpgrade("resume_downloads");
       }
+    } finally {
+      setDownloadingId(null);
     }
   }
 
@@ -293,7 +295,6 @@ export function ResumeList() {
                     isViewLoading={viewLoadingId === resume.id}
                     appStatus={null}
                     canEdit={false}
-                    isGeneral={false}
                     onUse={() => void handleUse(resume)}
                     onEdit={() => void handleEdit(resume)}
                     onView={() => void handleView(resume)}
@@ -319,9 +320,9 @@ export function ResumeList() {
                     isSelected={false}
                     isLoading={loadingId === resume.id}
                     isViewLoading={viewLoadingId === resume.id}
+                    isDownloading={downloadingId === resume.id}
                     appStatus={null}
                     canEdit={true}
-                    isGeneral={true}
                     onUse={() => {}}
                     onEdit={() => void handleEdit(resume)}
                     onView={() => void handleView(resume)}
@@ -345,13 +346,13 @@ export function ResumeList() {
                     isSelected={false}
                     isLoading={loadingId === resume.id}
                     isViewLoading={viewLoadingId === resume.id}
+                    isDownloading={downloadingId === resume.id}
                     appStatus={getAppStatus(resume)}
                     canEdit={canEditResume(resume)}
-                    isGeneral={false}
                     onUse={() => {}}
                     onEdit={() => void handleEdit(resume)}
                     onView={() => void handleView(resume)}
-                    onDownload={() => {}}
+                    onDownload={() => void handleDownload(resume)}
                     onDelete={() => deleteMutation.mutate(resume.id)}
                   />
                 ))}
@@ -375,9 +376,9 @@ interface ResumeRowProps {
   isSelected: boolean;
   isLoading: boolean;
   isViewLoading: boolean;
+  isDownloading?: boolean;
   appStatus: string | null;
   canEdit: boolean;
-  isGeneral?: boolean;
   onUse: () => void;
   onEdit: () => void;
   onView: () => void;
@@ -386,8 +387,8 @@ interface ResumeRowProps {
 }
 
 function ResumeRow({
-  resume, isSelected, isLoading, isViewLoading,
-  appStatus, canEdit, isGeneral = false,
+  resume, isSelected, isLoading, isViewLoading, isDownloading = false,
+  appStatus, canEdit,
   onUse, onEdit, onView, onDownload, onDelete,
 }: ResumeRowProps) {
   const isTailored = resume.type === "tailored";
@@ -453,14 +454,18 @@ function ResumeRow({
           {isViewLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
         </button>
 
-        {/* Download button — General Resumes only */}
-        {isGeneral && onDownload && (
+        {/* Download button — all saved tailored resumes */}
+        {isTailored && onDownload && (
           <button
             onClick={onDownload}
+            disabled={isDownloading}
             title="Download PDF"
-            className="h-8 w-8 rounded-lg border border-white/10 flex items-center justify-center text-on-surface-variant/50 hover:text-green-400 hover:border-green-500/30 hover:bg-green-500/8 transition-colors"
+            className="h-8 w-8 rounded-lg border border-white/10 flex items-center justify-center text-on-surface-variant/50 hover:text-green-400 hover:border-green-500/30 hover:bg-green-500/8 transition-colors disabled:opacity-40"
           >
-            <Download className="h-3.5 w-3.5" />
+            {isDownloading
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : <Download className="h-3.5 w-3.5" />
+            }
           </button>
         )}
 
