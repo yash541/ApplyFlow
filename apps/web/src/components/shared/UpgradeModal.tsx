@@ -11,9 +11,9 @@ interface UpgradeModalProps {
 }
 
 const REASON_MESSAGES: Record<string, string> = {
-  resume_downloads:   "You've used your 1 free resume download. Upgrade to Pro for unlimited downloads.",
+  resume_downloads:   "You've used all 3 free resume downloads. Upgrade to Pro for unlimited downloads.",
   autofill_sessions:  "You've used all 10 free autofill sessions this month. Upgrade to Pro for unlimited autofills.",
-  match_scores:       "You've used all 10 free match scores this month. Upgrade to Pro for unlimited scoring.",
+  match_scores:       "You've used all 15 free match scores this month. Upgrade to Pro for unlimited scoring.",
   resume_tailoring:   "AI resume tailoring is a Pro feature. Upgrade to tailor resumes for any job.",
 };
 

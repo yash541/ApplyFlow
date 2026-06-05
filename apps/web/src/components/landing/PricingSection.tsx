@@ -7,13 +7,13 @@ import Link from "next/link";
 const FREE_FEATURES = [
   { label: "Chrome extension + job overlay", note: "" },
   { label: "AI autofill sessions", note: "10 / month" },
-  { label: "Job match score", note: "10 / month" },
+  { label: "Job match score", note: "15 / month" },
   { label: "Applications Kanban board", note: "Unlimited" },
   { label: "Submission auto-detection", note: "" },
   { label: "Real-time notifications", note: "" },
   { label: "Job search", note: "JSearch + Adzuna + Apify" },
   { label: "1 base resume upload", note: "" },
-  { label: "1 resume download", note: "lifetime total" },
+  { label: "3 resume downloads", note: "lifetime total" },
 ];
 
 const PRO_FEATURES = [
