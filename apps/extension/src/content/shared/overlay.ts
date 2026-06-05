@@ -22,6 +22,7 @@ export type AppRecord = {
 let _animTimer: ReturnType<typeof setInterval> | null = null;
 let _animCurrent = 0;
 let _revisitSavedAt: number | null = null; // set when score comes from persistent cache
+let _lockedState: "limit_exceeded" | "login_required" | null = null;
 
 /** Call before updateOverlayScore when serving a cached score — shows "Seen X ago" badge. */
 export function markRevisit(savedAt: number): void {
@@ -109,6 +110,8 @@ export function updateOverlayScore(finalScore: number, scoreBasis: string): void
 
   // Login required — stop animation, show key icon + prompt
   if (scoreBasis === "login_required") {
+    _animCurrent = 0;
+    _lockedState = "login_required";
     const s = _scoreEl(); const b = _bubbleEl(); const t = _tierEl();
     if (s) { s.textContent = "🔑"; s.style.fontSize = "18px"; }
     if (b) b.textContent = "?";
@@ -119,7 +122,8 @@ export function updateOverlayScore(finalScore: number, scoreBasis: string): void
 
   // Limit exceeded — stop animation, show lock icon + upgrade prompt
   if (scoreBasis === "limit_exceeded") {
-    _animCurrent = 0; // reset so save-button handler can't pick up stale count-up value
+    _animCurrent = 0;
+    _lockedState = "limit_exceeded";
     const s = _scoreEl(); const b = _bubbleEl(); const t = _tierEl();
     if (s) { s.textContent = "🔒"; s.style.fontSize = "18px"; }
     if (b) b.textContent = "🔒";
@@ -127,6 +131,9 @@ export function updateOverlayScore(finalScore: number, scoreBasis: string): void
     _updateArc(0);
     return;
   }
+
+  // Real score resolving — clear any previous locked state
+  _lockedState = null;
 
   const isEst = scoreBasis === "title_only";
   let cur      = _animCurrent;
@@ -279,6 +286,7 @@ export function injectLoadingOverlay(suppressCountUp = false): void {
   document.getElementById("applyflow-overlay")?.remove();
   _clearAnim();
   _animCurrent = 0;
+  _lockedState = null; // new page — clear any previous locked state
 
   const arcC = ARC_C.toFixed(2);
   const container = document.createElement("div");
@@ -450,11 +458,11 @@ function _wireSaveButton(
             status: "saved", applied_at: new Date().toISOString(),
             has_resume: false, resume_id: null, ats_score: null, job_url: jobData.url,
           };
-          // Use the live displayed score at click-time, not the stale wired value.
-          // matchScore is captured at wire-time (often 0/"loading" before AI resolves);
-          // _animCurrent reflects what the user actually sees when they click save.
-          const liveScore = _animCurrent > 0 ? _animCurrent : matchScore;
-          const liveBasis = (scoreBasis === "loading" && liveScore > 0) ? "full_jd" : scoreBasis;
+          // If overlay is in a locked state (limit or login), preserve it after save.
+          // _lockedState is the authoritative check — _animCurrent alone isn't enough
+          // because matchScore (captured at wire-time from scoreCache) can still be > 0.
+          const liveScore = _lockedState ? 0 : (_animCurrent > 0 ? _animCurrent : matchScore);
+          const liveBasis = _lockedState ?? ((scoreBasis === "loading" && liveScore > 0) ? "full_jd" : scoreBasis);
           injectOverlay(liveScore, jobData, newApp, fingerprint, onAppSaved, liveBasis, onRematch);
         }
       }
@@ -797,8 +805,8 @@ export function injectOverlay(
           job_url: jobData.url,
         };
         if (newAppId) onAppSaved?.(newAppId);
-        const liveScore = _animCurrent > 0 ? _animCurrent : matchScore;
-        const liveBasis = (scoreBasis === "loading" && liveScore > 0) ? "full_jd" : (scoreBasis || "full_jd");
+        const liveScore = _lockedState ? 0 : (_animCurrent > 0 ? _animCurrent : matchScore);
+        const liveBasis = _lockedState ?? ((scoreBasis === "loading" && liveScore > 0) ? "full_jd" : (scoreBasis || "full_jd"));
         injectOverlay(liveScore, jobData, app, fingerprint, onAppSaved, liveBasis, onRematch);
       },
     );
