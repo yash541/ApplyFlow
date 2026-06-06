@@ -38,7 +38,8 @@ export function RichText({ children, style, accentColor, boldFontFamily = "Helve
     ...textOnlyStyle
   } = style;
 
-  const wrapperStyle: Record<string, unknown> = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const wrapperStyle: any = {
     overflow: "hidden",
     ...(flex !== undefined && { flex }),
     ...(minWidth !== undefined && { minWidth }),
