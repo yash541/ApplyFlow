@@ -4,29 +4,31 @@ import { motion } from "framer-motion";
 
 const PORTALS = [
   "LinkedIn",
-  "Workday",
   "Greenhouse",
   "Lever",
-  "iCIMS",
-  "Dayforce",
+  "Workday",
+  "Indeed",
+  "Glassdoor",
   "Ashby",
-  "Google Forms",
-  "Taleo",
   "BambooHR",
   "SmartRecruiters",
-  "JazzHR",
+  "Wellfound",
+  "iCIMS",
+  "Jobvite",
+  "Naukri",
+  "Cutshort",
 ];
 
 export function SocialProofBar() {
   return (
-    <section id="portals" className="py-12 border-y border-white/[0.06]" style={{ background: "rgba(255,255,255,0.015)" }}>
-      <div className="max-w-7xl mx-auto px-6">
+    <section className="py-12 border-y border-white/[0.06]" style={{ background: "rgba(255,255,255,0.015)" }}>
+      <div className="max-w-7xl mx-auto px-6 space-y-4">
         <motion.div
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}
           transition={{ duration: 0.6 }}
-          className="flex flex-col sm:flex-row items-center gap-4"
+          className="flex flex-col sm:flex-row items-start sm:items-center gap-4"
         >
           <span className="text-sm font-medium text-white/40 flex-shrink-0 whitespace-nowrap">
             Autofills forms on:
@@ -45,8 +47,33 @@ export function SocialProofBar() {
               </motion.span>
             ))}
             <span className="px-3 py-1 rounded-full text-xs font-semibold text-indigo-400 border border-indigo-500/30 bg-indigo-500/10">
-              +30 more
+              +20 more
             </span>
+          </div>
+        </motion.div>
+
+        {/* Powered by bar */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6, delay: 0.2 }}
+          className="flex items-center gap-3"
+        >
+          <span className="text-sm font-medium text-white/40 flex-shrink-0">Powered by:</span>
+          <div className="flex flex-wrap items-center gap-2">
+            {[
+              { label: "Claude AI (Anthropic)", color: "text-violet-400 border-violet-500/30 bg-violet-500/10" },
+              { label: "Stripe Billing", color: "text-indigo-400 border-indigo-500/30 bg-indigo-500/10" },
+              { label: "Resend Email", color: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10" },
+            ].map((item) => (
+              <span
+                key={item.label}
+                className={`px-3 py-1 rounded-full text-xs font-semibold border ${item.color}`}
+              >
+                {item.label}
+              </span>
+            ))}
           </div>
         </motion.div>
       </div>

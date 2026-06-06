@@ -251,7 +251,6 @@ export function FeaturesSection() {
 
         {/* Feature D: General Resumes */}
         <FeatureRow
-          reverse
           text={
             <div>
               <FeatureLabel label="Resume Library" />
@@ -342,6 +341,7 @@ export function FeaturesSection() {
 
         {/* Feature E: Job Search */}
         <FeatureRow
+          reverse
           text={
             <div>
               <FeatureLabel label="Multi-Provider Job Search" />
@@ -357,14 +357,14 @@ export function FeaturesSection() {
                 </span>
               </h2>
               <p className="text-white/50 text-lg leading-relaxed mb-6">
-                Search across JSearch, Adzuna, and Apify simultaneously. Results
-                stream in as they arrive — no waiting for all sources to complete.
+                Search across JSearch, Adzuna, and Apify in parallel — results from
+                all three providers in under 2 seconds, deduplicated automatically.
                 Every result shows your match score so you can triage instantly.
               </p>
               <ul className="space-y-2.5">
                 {[
-                  "Three aggregated sources in one search",
-                  "Results stream in real time as they arrive",
+                  "Three providers searched simultaneously",
+                  "Deduplicated results across all sources",
                   "Match score on every result card",
                 ].map((item) => (
                   <li key={item} className="flex items-center gap-3 text-white/60 text-sm">

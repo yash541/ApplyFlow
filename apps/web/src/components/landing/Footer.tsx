@@ -20,29 +20,24 @@ export function Footer() {
             </span>
           </div>
           <p className="text-xs text-white/30 max-w-xs text-center md:text-left">
-            AI-powered job application automation. Apply to jobs in 30 seconds.
+            AI-powered career operating system. Score, apply, tailor, and track — all in one place.
           </p>
           <p className="text-xs text-white/20 mt-1">
-            Powered by ApplyFlow AI
+            Powered by Claude AI (Anthropic)
           </p>
         </div>
 
         {/* Links */}
         <div className="flex items-center gap-6">
-          <Link
-            href="/login"
-            className="text-sm text-white/40 hover:text-white transition-colors"
-          >
-            Sign In
+          <Link href="/#how-it-works" className="text-sm text-white/40 hover:text-white transition-colors">
+            How It Works
           </Link>
-          <a
-            href="https://github.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm text-white/40 hover:text-white transition-colors"
-          >
-            GitHub
-          </a>
+          <Link href="/#pricing" className="text-sm text-white/40 hover:text-white transition-colors">
+            Pricing
+          </Link>
+          <Link href="/privacy" className="text-sm text-white/40 hover:text-white transition-colors">
+            Privacy
+          </Link>
           <a
             href="mailto:avulayashwanth64@gmail.com"
             className="text-sm text-white/40 hover:text-white transition-colors"
