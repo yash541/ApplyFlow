@@ -12,7 +12,9 @@ export type { TailoredContent };
 
 export type SectionId = "summary" | "experience" | "education" | "skills" | "projects" | "certifications";
 export const BUILTIN_SECTION_IDS = ["summary", "experience", "education", "skills", "projects", "certifications"] as const;
-export const DEFAULT_SECTION_ORDER: string[] = ["summary", "experience", "projects", "education", "skills", "certifications"];
+// "projects" and "certifications" are omitted from the default order —
+// they are injected dynamically only when content has entries.
+export const DEFAULT_SECTION_ORDER: string[] = ["summary", "experience", "education", "skills"];
 
 const BUILTIN_LABELS: Record<string, string> = {
   summary: "Summary",

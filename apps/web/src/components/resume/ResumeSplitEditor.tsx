@@ -531,10 +531,23 @@ export function ResumeSplitEditor() {
   // Without this, new Set/array instances every render cause visibleOrder to change every render,
   // which makes the debounce effect fire every render → infinite setPdfSnapshotKey loop.
   const sectionOrder = useMemo(() => {
-    if (editorPrefs.sectionOrder.length > 0) return editorPrefs.sectionOrder;
+    const c = draftContent ?? tailoredContent;
+    if (editorPrefs.sectionOrder.length > 0) {
+      // Inject built-in optional sections if they have content but aren't yet in the stored order
+      const stored = editorPrefs.sectionOrder;
+      const extras: string[] = [];
+      if ((c?.projects?.length ?? 0) > 0 && !stored.includes("projects")) extras.push("projects");
+      if ((c?.certifications?.length ?? 0) > 0 && !stored.includes("certifications")) extras.push("certifications");
+      return extras.length > 0 ? [...stored, ...extras] : stored;
+    }
+    // First load: build from defaults + optional built-ins (if content) + custom sections
+    const optional: string[] = [];
+    if ((c?.projects?.length ?? 0) > 0) optional.push("projects");
+    if ((c?.certifications?.length ?? 0) > 0) optional.push("certifications");
     return [
       ...DEFAULT_SECTION_ORDER,
-      ...((draftContent ?? tailoredContent)?.customSections ?? []).map(s => s.id),
+      ...optional,
+      ...(c?.customSections ?? []).map(s => s.id),
     ];
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorPrefs.sectionOrder, draftContent, tailoredContent]);
