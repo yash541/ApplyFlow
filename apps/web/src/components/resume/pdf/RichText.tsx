@@ -1,4 +1,4 @@
-import { Text, Link } from "@react-pdf/renderer";
+import { View, Text, Link } from "@react-pdf/renderer";
 import { parseRichText } from "./shared";
 
 interface Props {
@@ -11,36 +11,59 @@ interface Props {
 }
 
 export function RichText({ children, style, accentColor, boldFontFamily = "Helvetica-Bold" }: Props) {
-  // overflow: hidden clips unbreakable text (no spaces) so it never crosses page boundaries
-  const baseStyle = { textAlign: "justify" as const, overflow: "hidden" as const, ...style };
+  // Split layout props (go on the wrapping View) from text props (go on the Text).
+  // Wrapping in a View with overflow:hidden is the only reliable way in react-pdf's
+  // Yoga engine to prevent long unbroken strings from crossing page/column margins.
+  const {
+    flex, minWidth, maxWidth, flexShrink, flexGrow, width,
+    alignSelf, margin, marginTop, marginBottom, marginLeft, marginRight,
+    ...textOnlyStyle
+  } = style;
+
+  const wrapperStyle: Record<string, unknown> = {
+    overflow: "hidden",
+    ...(flex !== undefined && { flex }),
+    ...(minWidth !== undefined && { minWidth }),
+    ...(maxWidth !== undefined && { maxWidth }),
+    ...(flexShrink !== undefined && { flexShrink }),
+    ...(flexGrow !== undefined && { flexGrow }),
+    ...(width !== undefined && { width }),
+    ...(alignSelf !== undefined && { alignSelf }),
+    ...(margin !== undefined && { margin }),
+    ...(marginTop !== undefined && { marginTop }),
+    ...(marginBottom !== undefined && { marginBottom }),
+    ...(marginLeft !== undefined && { marginLeft }),
+    ...(marginRight !== undefined && { marginRight }),
+  };
+
+  const baseTextStyle = { textAlign: "justify" as const, ...textOnlyStyle };
   const segments = parseRichText(children);
 
-  // Fast path: single plain segment with no markup
-  if (segments.length === 1 && !segments[0]?.href && !segments[0]?.bold) {
-    return <Text style={baseStyle}>{children}</Text>;
-  }
-
-  return (
-    <Text style={baseStyle}>
-      {segments.map((seg, i) => {
-        if (seg.href) {
-          return (
-            <Link key={i} src={seg.href}>
-              <Text style={{ ...baseStyle, color: accentColor, textDecoration: "underline" }}>
+  const textContent = segments.length === 1 && !segments[0]?.href && !segments[0]?.bold
+    ? <Text style={baseTextStyle}>{children}</Text>
+    : (
+      <Text style={baseTextStyle}>
+        {segments.map((seg, i) => {
+          if (seg.href) {
+            return (
+              <Link key={i} src={seg.href}>
+                <Text style={{ ...baseTextStyle, color: accentColor, textDecoration: "underline" }}>
+                  {seg.text}
+                </Text>
+              </Link>
+            );
+          }
+          if (seg.bold) {
+            return (
+              <Text key={i} style={{ ...baseTextStyle, fontFamily: boldFontFamily }}>
                 {seg.text}
               </Text>
-            </Link>
-          );
-        }
-        if (seg.bold) {
-          return (
-            <Text key={i} style={{ ...baseStyle, fontFamily: boldFontFamily }}>
-              {seg.text}
-            </Text>
-          );
-        }
-        return <Text key={i} style={baseStyle}>{seg.text}</Text>;
-      })}
-    </Text>
-  );
+            );
+          }
+          return <Text key={i} style={baseTextStyle}>{seg.text}</Text>;
+        })}
+      </Text>
+    );
+
+  return <View style={wrapperStyle}>{textContent}</View>;
 }
