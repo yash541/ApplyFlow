@@ -28,8 +28,12 @@ export function ModernTemplate({ content, accentColor, fontStyle, compact, layou
   // Use c.secGap so the spacing slider affects sidebar section gaps too
   const sidebarGap = c.secGap;
   // Padding strings scaled by margins multiplier so the margins slider works
-  const sidebarPad = compact ? "24pt 12pt" : `${Math.round(36 * m)}pt ${Math.round(14 * m)}pt`;
-  const mainPad    = compact ? "24pt 18pt 24pt 14pt" : `${Math.round(36 * m)}pt ${Math.round(22 * m)}pt ${Math.round(36 * m)}pt ${Math.round(18 * m)}pt`;
+  // Top/bottom padding goes on the Page so it re-applies on every page break.
+  // Left/right padding stays on the inner Views (sidebar/main) for column-specific spacing.
+  const pagePadV  = compact ? 24 : Math.round(36 * m);
+  const sidebarPadH = compact ? 12 : Math.round(14 * m);
+  const mainPadL  = compact ? 14 : Math.round(18 * m);
+  const mainPadR  = compact ? 18 : Math.round(22 * m);
 
   const mainHeaderStyle = {
     fontSize: c.fsTiny, fontFamily: ff(true), color: accentColor,
@@ -227,9 +231,9 @@ export function ModernTemplate({ content, accentColor, fontStyle, compact, layou
 
   return (
     <Document>
-      <Page size="A4" style={{ flexDirection: "row", fontFamily: ff(), fontSize: c.fs, color: "#1f2937" }}>
+      <Page size="A4" style={{ flexDirection: "row", fontFamily: ff(), fontSize: c.fs, color: "#1f2937", paddingTop: pagePadV, paddingBottom: pagePadV }}>
         {/* Sidebar */}
-        <View style={{ width: SIDEBAR_W, backgroundColor: "#1e293b", padding: sidebarPad, flexShrink: 0 }}>
+        <View style={{ width: SIDEBAR_W, backgroundColor: "#1e293b", paddingLeft: sidebarPadH, paddingRight: sidebarPadH, flexShrink: 0 }}>
           {/* Name scales with fontDelta: base 15pt + delta, min 12 */}
           <Text style={{ fontSize: Math.max(12, c.fs + 5), fontFamily: ff(true), color: "#fff", marginBottom: 2 }}>
             {content.name || "Your Name"}
@@ -251,7 +255,7 @@ export function ModernTemplate({ content, accentColor, fontStyle, compact, layou
         </View>
 
         {/* Main */}
-        <View style={{ flex: 1, padding: mainPad, minWidth: 0 }}>
+        <View style={{ flex: 1, paddingLeft: mainPadL, paddingRight: mainPadR, minWidth: 0 }}>
           {mainOrder.map(id => {
             if (id in mainSections) return mainSections[id] || null;
             const custom = content.customSections?.find(s => s.id === id);
