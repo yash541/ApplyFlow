@@ -1,14 +1,14 @@
 """PDF watermark for free-tier downloads.
 
-Stamps four watermark elements on every page:
-  - Centre  : diagonal "ApplyFlow Free" (45° CCW, 14pt)
-  - Left    : vertical text reading bottom-to-top (90° CCW, 6pt)
-  - Right   : vertical text reading top-to-bottom (−90°, 6pt)
-  - Bottom  : horizontal footer (6.5pt)
-  - Top     : none (intentionally omitted)
+Three watermark elements per page — no top, no centre diagonal:
+  Bottom : full text, horizontal, y=9
+  Left   : short text, 90° CCW (reads bottom→top), anchored near bottom-left
+  Right  : short text, −90° (reads top→bottom), anchored at same y-range as left
 
-Uses only pypdf (already a dependency) — no extra packages needed.
-Falls back to the original PDF silently if anything goes wrong.
+Left and right both span y ≈ 22–67 so they appear at the same vertical
+level, tucked near the bottom of the page beside the footer text.
+
+Uses only pypdf (already a dependency). Falls back silently on any error.
 """
 import base64
 import io
@@ -16,60 +16,45 @@ import io
 _BOTTOM_TEXT = (
     "ApplyFlow Free Plan  -  applyflow.com  -  Upgrade to Pro to remove watermark"
 )
-_SIDE_TEXT   = "ApplyFlow Free  -  applyflow.com"
-_CENTRE_TEXT = "ApplyFlow Free"
+_SIDE_TEXT = "ApplyFlow Free"
 
-# 45° trig constant
-_COS45 = 0.7071
+# "ApplyFlow Free" at 6pt: estimated advance ≈ 45 units (Helvetica avg 0.53×size)
+_SIDE_FONT_SIZE  = 6
+_SIDE_TEXT_ADVANCE = 45   # approx horizontal advance in points at 6pt
+
+_Y_LOW  = 22                              # bottom of both side texts
+_Y_HIGH = _Y_LOW + _SIDE_TEXT_ADVANCE    # top of both side texts (≈ 67)
 
 
 def _esc(text: str) -> str:
-    """Escape special characters for a PDF string literal."""
     return text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
 
 
 def _stamp_pdf_bytes(page_width: float, page_height: float) -> bytes:
-    """Build a minimal valid PDF page containing all watermark elements.
-
-    PDF text matrix Tm: a b c d e f
-      Normal (0°):   1   0  0  1  x y
-      90° CCW:       0   1 -1  0  x y   (reads bottom→top on left border)
-      −90° / 90° CW: 0  -1  1  0  x y   (reads top→bottom on right border)
-      45° CCW:     .707 .707 −.707 .707  x y   (diagonal centre)
-    """
     w, h = page_width, page_height
-
-    # Centre-diagonal start point — offset so "ApplyFlow Free" at 14pt is
-    # approximately centred.  Helvetica avg char width ≈ 0.55×size.
-    # "ApplyFlow Free" = 14 chars × 0.55 × 14pt ≈ 108 units; half ≈ 54;
-    # projected onto each axis at 45°: 54 × cos45 ≈ 38 units.
-    cx = w / 2 - 38
-    cy = h / 2 - 38
-
-    bottom  = _esc(_BOTTOM_TEXT)
-    side    = _esc(_SIDE_TEXT)
-    centre  = _esc(_CENTRE_TEXT)
+    sz   = _SIDE_FONT_SIZE
+    bot  = _esc(_BOTTOM_TEXT)
+    side = _esc(_SIDE_TEXT)
 
     content_str = "\n".join([
         "q 0.72 0.72 0.72 rg",
 
         # ── Bottom (horizontal) ────────────────────────────────────────────────
-        f"BT /F1 6.5 Tf 1 0 0 1 20 9 Tm ({bottom}) Tj ET",
+        f"BT /F1 6.5 Tf 1 0 0 1 20 9 Tm ({bot}) Tj ET",
 
-        # ── Left border (90° CCW — text reads bottom → top) ───────────────────
-        f"BT /F1 6 Tf 0 1 -1 0 10 80 Tm ({side}) Tj ET",
+        # ── Left border (90° CCW — reads bottom→top, anchored at y=_Y_LOW) ────
+        #   Tm: 0 1 -1 0 x y  →  text origin (x, _Y_LOW), advances upward
+        f"BT /F1 {sz} Tf 0 1 -1 0 10 {_Y_LOW} Tm ({side}) Tj ET",
 
-        # ── Right border (−90° — text reads top → bottom) ─────────────────────
-        f"BT /F1 6 Tf 0 -1 1 0 {w - 10:.1f} {h - 80:.1f} Tm ({side}) Tj ET",
-
-        # ── Centre diagonal (45° CCW) ──────────────────────────────────────────
-        f"BT /F1 14 Tf {_COS45} {_COS45} -{_COS45} {_COS45} {cx:.1f} {cy:.1f} Tm ({centre}) Tj ET",
+        # ── Right border (−90° — reads top→bottom, starts at y=_Y_HIGH) ────────
+        #   With −90° each char advances in the −y direction, so starting at
+        #   _Y_HIGH and ending at _Y_HIGH − advance ≈ _Y_LOW — same visual band.
+        f"BT /F1 {sz} Tf 0 -1 1 0 {w - 10:.1f} {_Y_HIGH} Tm ({side}) Tj ET",
 
         "Q",
     ])
     content_bytes = content_str.encode("latin-1", errors="replace")
 
-    # ── Assemble raw PDF ───────────────────────────────────────────────────────
     header = b"%PDF-1.4\n"
     obj1   = b"1 0 obj\n<</Type /Catalog /Pages 2 0 R>>\nendobj\n"
     obj2   = b"2 0 obj\n<</Type /Pages /Kids [3 0 R] /Count 1>>\nendobj\n"
@@ -86,7 +71,6 @@ def _stamp_pdf_bytes(page_width: float, page_height: float) -> bytes:
     )
     obj5   = b"5 0 obj\n<</Type /Font /Subtype /Type1 /BaseFont /Helvetica>>\nendobj\n"
 
-    # Calculate exact byte offsets for xref
     offsets: dict[int, int] = {}
     pos = len(header)
     for idx, chunk in enumerate([obj1, obj2, obj3, obj4, obj5], start=1):
@@ -107,11 +91,7 @@ def _stamp_pdf_bytes(page_width: float, page_height: float) -> bytes:
 
 
 def add_footer_watermark(pdf_b64: str) -> str:
-    """Overlay watermark on every page of a base64-encoded PDF.
-
-    Returns the original base64 string unchanged if watermarking fails —
-    downloads never break even on malformed or encrypted PDFs.
-    """
+    """Overlay watermark on every page. Returns original on any error."""
     if not pdf_b64:
         return pdf_b64
     try:
