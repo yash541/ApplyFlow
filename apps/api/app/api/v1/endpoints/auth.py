@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.core.limiter import limiter
-from app.models import User, EmailVerification
+from app.models import User, EmailVerification, PasswordResetToken
 
 router = APIRouter()
 
@@ -177,3 +177,109 @@ async def me(current_user: User = Depends(get_current_user)):
         "email": current_user.email,
         "email_verified": current_user.email_verified,
     }
+
+
+# ── Password Reset ────────────────────────────────────────────────────────────
+
+_RESET_TOKEN_EXPIRE_HOURS = 1
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@router.post("/forgot-password")
+@limiter.limit("3/hour")
+async def forgot_password(
+    request: Request,
+    body: ForgotPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a password reset email. Always returns 200 to avoid email enumeration."""
+    result = await db.execute(select(User).where(User.email == body.email))
+    user = result.scalar_one_or_none()
+
+    if user:
+        # Delete any existing reset token for this user
+        await db.execute(delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id))
+
+        token = secrets.token_urlsafe(48)
+        expires = datetime.now(tz=timezone.utc) + timedelta(hours=_RESET_TOKEN_EXPIRE_HOURS)
+        db.add(PasswordResetToken(user_id=user.id, token=token, expires_at=expires))
+        await db.flush()
+
+        reset_link = f"{settings.WEB_APP_URL}/reset-password?token={token}"
+        try:
+            from app.core.email import send_password_reset_email
+            send_password_reset_email(user.email, user.name, reset_link)
+        except Exception:
+            pass  # Don't reveal email sending failures
+
+        await db.commit()
+
+    return {"message": "If that email is registered, a reset link has been sent."}
+
+
+@router.post("/reset-password")
+async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    """Validate reset token and set a new password."""
+    result = await db.execute(
+        select(PasswordResetToken).where(PasswordResetToken.token == body.token)
+    )
+    prt = result.scalar_one_or_none()
+
+    if not prt:
+        raise HTTPException(status_code=400, detail="Invalid or already used reset link.")
+
+    if prt.expires_at.replace(tzinfo=timezone.utc) < datetime.now(tz=timezone.utc):
+        await db.delete(prt)
+        await db.commit()
+        raise HTTPException(status_code=400, detail="Reset link has expired. Please request a new one.")
+
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=422, detail="Password must be at least 8 characters.")
+
+    user_result = await db.execute(select(User).where(User.id == prt.user_id))
+    user = user_result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    user.hashed_password = hash_password(body.new_password)
+    await db.delete(prt)
+    await db.commit()
+
+    return {"message": "Password updated successfully."}
+
+
+@router.post("/change-password")
+async def change_password(
+    body: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Change password for an authenticated user."""
+    if not verify_password(body.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=422, detail="Password must be at least 8 characters.")
+
+    if body.current_password == body.new_password:
+        raise HTTPException(status_code=400, detail="New password must be different from current password.")
+
+    result = await db.execute(select(User).where(User.id == current_user.id))
+    user = result.scalar_one()
+    user.hashed_password = hash_password(body.new_password)
+    await db.commit()
+
+    return {"message": "Password changed successfully."}

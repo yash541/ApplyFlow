@@ -152,6 +152,12 @@ export const api = {
       request<{ message: string }>(`/api/v1/auth/verify?token=${encodeURIComponent(token)}`, { method: "GET" }),
     resendVerification: () =>
       request<{ message: string }>("/api/v1/auth/resend-verification", { method: "POST" }),
+    forgotPassword: (email: string) =>
+      request<{ message: string }>("/api/v1/auth/forgot-password", { method: "POST", body: { email } }),
+    resetPassword: (token: string, new_password: string) =>
+      request<{ message: string }>("/api/v1/auth/reset-password", { method: "POST", body: { token, new_password } }),
+    changePassword: (current_password: string, new_password: string) =>
+      request<{ message: string }>("/api/v1/auth/change-password", { method: "POST", body: { current_password, new_password } }),
   },
 
   resumes: {

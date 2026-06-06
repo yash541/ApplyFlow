@@ -40,14 +40,21 @@ export function LoginForm() {
         onChange={(e) => setEmail(e.target.value)}
         required
       />
-      <Input
-        label="Password"
-        type="password"
-        placeholder="••••••••"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        required
-      />
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-label-sm text-on-surface-variant">Password</span>
+          <Link href="/forgot-password" className="text-label-xs text-primary hover:underline">
+            Forgot password?
+          </Link>
+        </div>
+        <Input
+          type="password"
+          placeholder="••••••••"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
+      </div>
       {error && (
         <p className="text-sm text-red-400">{error}</p>
       )}
