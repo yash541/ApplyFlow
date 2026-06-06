@@ -36,11 +36,15 @@ def _stamp_pdf_bytes(page_width: float, page_height: float) -> bytes:
     bot  = _esc(_BOTTOM_TEXT)
     side = _esc(_SIDE_TEXT)
 
+    # Estimate text width for bottom string to centre it.
+    # Helvetica 6.5pt avg char advance ≈ 0.50 × size = 3.25 units/char.
+    bottom_x = max(10.0, (w - len(_BOTTOM_TEXT) * 3.25) / 2)
+
     content_str = "\n".join([
         "q 0.72 0.72 0.72 rg",
 
-        # ── Bottom (horizontal) ────────────────────────────────────────────────
-        f"BT /F1 6.5 Tf 1 0 0 1 20 9 Tm ({bot}) Tj ET",
+        # ── Bottom (horizontally centred) ──────────────────────────────────────
+        f"BT /F1 6.5 Tf 1 0 0 1 {bottom_x:.1f} 9 Tm ({bot}) Tj ET",
 
         # ── Left border (90° CCW — reads bottom→top, anchored at y=_Y_LOW) ────
         #   Tm: 0 1 -1 0 x y  →  text origin (x, _Y_LOW), advances upward
