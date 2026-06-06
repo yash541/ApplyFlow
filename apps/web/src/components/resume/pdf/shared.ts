@@ -4,17 +4,34 @@ import type { TailoredContent, FontStyle, TemplateId, SkillGroup } from "@/store
 // Disable react-pdf's built-in hyphenation — it inserts hyphens mid-word at line breaks
 Font.registerHyphenationCallback(word => [word]);
 
+// ─── Custom font registration ─────────────────────────────────────────────────
+// Fonts are registered with separate family names per weight/style so the
+// existing templates can continue using fontFamily: ff(bold) with no changes.
+// Inter — served from rsms.me (official Inter CDN, WOFF, no CORS issues)
+Font.register({ family: "Inter",            src: "https://rsms.me/inter/font-files/Inter-Regular.woff" });
+Font.register({ family: "Inter-Bold",       src: "https://rsms.me/inter/font-files/Inter-Bold.woff" });
+Font.register({ family: "Inter-Italic",     src: "https://rsms.me/inter/font-files/Inter-Italic.woff" });
+Font.register({ family: "Inter-BoldItalic", src: "https://rsms.me/inter/font-files/Inter-BoldItalic.woff" });
+
+// Lora — elegant serif from Google Fonts CDN (WOFF2 supported in react-pdf v4)
+Font.register({ family: "Lora",             src: "https://fonts.gstatic.com/s/lora/v35/0QI6MX1D_JOxE7fSMw.woff2" });
+Font.register({ family: "Lora-Bold",        src: "https://fonts.gstatic.com/s/lora/v35/0QI8MX1D_JOxE7fSNw.woff2" });
+Font.register({ family: "Lora-Italic",      src: "https://fonts.gstatic.com/s/lora/v35/0QI4MX1D_JOxE7fSKOA.woff2" });
+Font.register({ family: "Lora-BoldItalic",  src: "https://fonts.gstatic.com/s/lora/v35/0QI2MX1D_JOxE7fSKl4.woff2" });
+
 export type { TailoredContent };
 
-export type SectionId = "summary" | "experience" | "education" | "skills";
-export const BUILTIN_SECTION_IDS = ["summary", "experience", "education", "skills"] as const;
-export const DEFAULT_SECTION_ORDER: string[] = ["summary", "experience", "education", "skills"];
+export type SectionId = "summary" | "experience" | "education" | "skills" | "projects" | "certifications";
+export const BUILTIN_SECTION_IDS = ["summary", "experience", "education", "skills", "projects", "certifications"] as const;
+export const DEFAULT_SECTION_ORDER: string[] = ["summary", "experience", "projects", "education", "skills", "certifications"];
 
 const BUILTIN_LABELS: Record<string, string> = {
   summary: "Summary",
   experience: "Experience",
   education: "Education",
   skills: "Skills",
+  projects: "Projects",
+  certifications: "Certifications",
 };
 
 export function getSectionLabel(id: string, content: TailoredContent): string {
@@ -82,12 +99,12 @@ export interface TemplateProps {
 
 // ─── Typography helpers ───────────────────────────────────────────────────────
 export function fontFamily(style: FontStyle, bold = false): string {
-  if (style === "serif") return bold ? "Times-Bold" : "Times-Roman";
-  return bold ? "Helvetica-Bold" : "Helvetica";
+  if (style === "serif") return bold ? "Lora-Bold" : "Lora";
+  return bold ? "Inter-Bold" : "Inter";
 }
 
 export function fontItalic(style: FontStyle): string {
-  return style === "serif" ? "Times-Italic" : "Helvetica-Oblique";
+  return style === "serif" ? "Lora-Italic" : "Inter-Italic";
 }
 
 export function contactLine(contact: TailoredContent["contact"]): string {

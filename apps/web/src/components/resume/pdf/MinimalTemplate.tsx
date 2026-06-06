@@ -1,4 +1,4 @@
-import { Document, Page, Text, View } from "@react-pdf/renderer";
+import { Document, Page, Text, View, Link } from "@react-pdf/renderer";
 import { fontFamily, fontItalic, makeConfig, DEFAULT_SECTION_ORDER, getSectionLabel, flattenSkills, type TemplateProps } from "./shared";
 import { ContactLinks } from "./ContactLinks";
 import { RichText } from "./RichText";
@@ -101,6 +101,47 @@ export function MinimalTemplate({ content, accentColor, fontStyle, compact, layo
             </View>
           ))}
         </View>
+      </View>
+    ),
+    projects: (content.projects?.length ?? 0) > 0 && (
+      <View key="projects" style={{ marginBottom: secGap }}>
+        <Text style={{ ...headerStyle, marginBottom: headerGap }}>{getSectionLabel("projects", content)}</Text>
+        {content.projects!.map((proj, i) => (
+          <View key={i} wrap={false} style={{ marginBottom: c.jobGap }}>
+            <View style={{ flexDirection: "row", marginBottom: 1 }}>
+              <Text style={{ flex: 1, fontSize: c.fs + 1, fontFamily: ff(true), minWidth: 0 }}>{proj.name}</Text>
+              {(proj.url || proj.github) && (
+                <Link src={proj.url || proj.github || ""} style={{ textDecoration: "none" }}>
+                  <Text style={{ fontSize: c.fsTiny, color: accentColor, flexShrink: 0 }}>↗</Text>
+                </Link>
+              )}
+            </View>
+            {proj.tech && proj.tech.length > 0 && (
+              <Text style={{ fontSize: c.fsTiny, fontFamily: fi(), color: "#888", marginBottom: 2 }}>{proj.tech.join(" · ")}</Text>
+            )}
+            {proj.bullets.map((b, j) => (
+              <View key={j} style={{ flexDirection: "row", marginBottom: c.bulletGap, paddingLeft: 6 }}>
+                <Text style={{ fontSize: c.fs, color: "#bbb", width: 12, flexShrink: 0 }}>—</Text>
+                <RichText style={{ flex: 1, fontSize: c.fsSmall, color: "#333", minWidth: 0 }} accentColor={accentColor}>{b}</RichText>
+              </View>
+            ))}
+          </View>
+        ))}
+      </View>
+    ),
+    certifications: (content.certifications?.length ?? 0) > 0 && (
+      <View key="certifications" style={{ marginBottom: secGap }}>
+        <Text style={{ ...headerStyle, marginBottom: headerGap }}>{getSectionLabel("certifications", content)}</Text>
+        {content.certifications!.map((cert, i) => (
+          <View key={i} wrap={false} style={{ marginBottom: 5 }}>
+            <View style={{ flexDirection: "row" }}>
+              <Text style={{ flex: 1, fontFamily: ff(true), fontSize: c.fs, minWidth: 0 }}>{cert.name}</Text>
+              {cert.date && <Text style={{ fontSize: c.fsTiny, color: "#aaa", flexShrink: 0 }}>{cert.date}</Text>}
+            </View>
+            <Text style={{ fontSize: c.fsSmall, fontFamily: fi(), color: "#666" }}>{cert.issuer}</Text>
+            {cert.credentialId && <Text style={{ fontSize: c.fsTiny, color: "#aaa" }}>ID: {cert.credentialId}</Text>}
+          </View>
+        ))}
       </View>
     ),
   };

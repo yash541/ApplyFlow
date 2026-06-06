@@ -18,6 +18,24 @@ export interface SkillGroup {
   items: string[];
 }
 
+export interface Project {
+  name: string;
+  description?: string;
+  tech?: string[];
+  url?: string;
+  github?: string;
+  bullets: string[];
+}
+
+export interface Certification {
+  name: string;
+  issuer: string;
+  date?: string;
+  expiry?: string;
+  credentialId?: string;
+  url?: string;
+}
+
 export interface TailoredContent {
   name: string;
   contact: { email?: string; phone?: string; location?: string; linkedin?: string; github?: string; website?: string };
@@ -26,14 +44,13 @@ export interface TailoredContent {
   education: { institution: string; degree: string; year: string }[];
   skills: string[];           // flat list — kept for backward compat
   skillGroups?: SkillGroup[]; // grouped — takes precedence when present
+  projects?: Project[];
+  certifications?: Certification[];
   keywords_added: string[];
-  ats_score: number;           // score after tailoring
-  ats_score_before?: number;   // original score before tailoring (new)
-  keyword_stuffing_flags?: string[]; // phrases ApplyFlow AI flagged as forced (new)
-  // Section display name overrides (e.g. experience → "Work History")
+  ats_score: number;
+  ats_score_before?: number;
+  keyword_stuffing_flags?: string[];
   sectionNames?: Record<string, string>;
-  // AI-generated extra sections (Certifications, Projects, Languages, etc.)
-  // + user-added custom sections — both use the same type
   customSections?: CustomSection[];
 }
 

@@ -46,13 +46,67 @@ const ACCENT_COLORS = [
   { hex: "#475569", label: "Slate" },
 ];
 
-const TEMPLATES: { id: TemplateId; label: string }[] = [
-  { id: "classic", label: "Classic" },
-  { id: "modern", label: "Modern" },
-  { id: "minimal", label: "Minimal" },
-  { id: "ats", label: "ATS" },
-  { id: "executive", label: "Exec" },
+const TEMPLATES: { id: TemplateId; label: string; desc: string; ats: "best" | "good" | "low" }[] = [
+  { id: "classic",   label: "Classic",       desc: "Traditional",    ats: "good" },
+  { id: "modern",    label: "Sidebar",        desc: "Two-column",     ats: "low"  },
+  { id: "minimal",   label: "Minimal",        desc: "Clean & airy",   ats: "good" },
+  { id: "ats",       label: "ATS-Ready",      desc: "Max compat",     ats: "best" },
+  { id: "executive", label: "Professional",   desc: "Premium header", ats: "good" },
 ];
+
+const ATS_BADGE: Record<string, { label: string; color: string }> = {
+  best: { label: "ATS ✓✓", color: "#22c55e" },
+  good: { label: "ATS ✓",  color: "#f59e0b" },
+  low:  { label: "ATS ✗",  color: "#ef4444" },
+};
+
+// Mini thumbnail: visual layout preview for each template
+function TemplateThumbnail({ id, active }: { id: TemplateId; active: boolean }) {
+  const bg = active ? "rgba(99,102,241,0.08)" : "rgba(255,255,255,0.03)";
+  const line = (top: number, left: number, right: number, h: number, op: number) => (
+    <div key={`${top}-${left}`} style={{ position: "absolute", top, left, right, height: h, background: `rgba(255,255,255,${op})`, borderRadius: 1 }} />
+  );
+  if (id === "modern") return (
+    <div style={{ position: "relative", height: 52, background: bg, borderRadius: 4, overflow: "hidden", display: "flex" }}>
+      <div style={{ width: 14, background: "rgba(30,41,59,0.9)", flexShrink: 0 }}>
+        {[6,12,18,24,30,36].map(t => <div key={t} style={{ margin: "2px 2px 0", height: 1.5, background: "rgba(255,255,255,0.25)", borderRadius: 1 }} />)}
+      </div>
+      <div style={{ flex: 1, position: "relative" }}>
+        {line(4, 4, 4, 2, 0.5)}
+        {[10,14,18,22,28,32,36,40].map(t => line(t, 4, 4, 1.5, 0.15))}
+      </div>
+    </div>
+  );
+  if (id === "executive") return (
+    <div style={{ position: "relative", height: 52, background: bg, borderRadius: 4, overflow: "hidden" }}>
+      <div style={{ height: 14, background: "rgba(99,102,241,0.35)", display: "flex", alignItems: "center", paddingLeft: 4 }}>
+        <div style={{ height: 2.5, width: 28, background: "rgba(255,255,255,0.6)", borderRadius: 1 }} />
+      </div>
+      {[18,22,28,32,36,40,44,48].map(t => line(t, 4, 4, 1.5, 0.15))}
+    </div>
+  );
+  if (id === "ats") return (
+    <div style={{ position: "relative", height: 52, background: bg, borderRadius: 4, overflow: "hidden" }}>
+      <div style={{ position: "absolute", top: 3, left: 4, right: 4, height: 2, background: "rgba(99,102,241,0.5)", borderRadius: 1 }} />
+      {line(8, 4, 4, 2, 0.45)}
+      {[13,17,21,27,31,35,41,45].map(t => line(t, 4, 4, 1.5, 0.15))}
+    </div>
+  );
+  if (id === "minimal") return (
+    <div style={{ position: "relative", height: 52, background: bg, borderRadius: 4, overflow: "hidden" }}>
+      {line(4, 4, 4, 3, 0.5)}
+      {[10,13,19,23,27,33,37,41].map(t => line(t, 4, 4, 1.5, 0.15))}
+    </div>
+  );
+  // classic
+  return (
+    <div style={{ position: "relative", height: 52, background: bg, borderRadius: 4, overflow: "hidden" }}>
+      <div style={{ position: "absolute", top: 4, left: "20%", right: "20%", height: 2.5, background: "rgba(255,255,255,0.5)", borderRadius: 1 }} />
+      <div style={{ position: "absolute", top: 9, left: 6, right: 6, height: 0.5, background: "rgba(99,102,241,0.6)", borderRadius: 1 }} />
+      {[13,17,21,27,31,35,41,45].map(t => line(t, 6, 6, 1.5, 0.15))}
+    </div>
+  );
+}
 
 // ─── Editable primitives ──────────────────────────────────────────────────────
 // ─── Centered edit modal (replaces inline editing) ───────────────────────────
@@ -679,6 +733,37 @@ export function ResumeSplitEditor() {
     patch(c => ({ ...c, education: c.education.filter((_, i) => i !== idx) }));
   }
 
+  // ── Projects mutators ─────────────────────────────────────────────────────
+  function addProject() {
+    patch(c => ({ ...c, projects: [...(c.projects ?? []), { name: "", tech: [], bullets: [] }] }));
+  }
+  function deleteProject(idx: number) {
+    patch(c => ({ ...c, projects: (c.projects ?? []).filter((_, i) => i !== idx) }));
+  }
+  function updateProject(idx: number, field: string, val: string | string[]) {
+    patch(c => ({ ...c, projects: (c.projects ?? []).map((p, i) => i === idx ? { ...p, [field]: val } : p) }));
+  }
+  function addProjectBullet(idx: number) {
+    patch(c => ({ ...c, projects: (c.projects ?? []).map((p, i) => i === idx ? { ...p, bullets: [...p.bullets, ""] } : p) }));
+  }
+  function updateProjectBullet(projIdx: number, bIdx: number, val: string) {
+    patch(c => ({ ...c, projects: (c.projects ?? []).map((p, i) => i === projIdx ? { ...p, bullets: p.bullets.map((b, j) => j === bIdx ? val : b) } : p) }));
+  }
+  function deleteProjectBullet(projIdx: number, bIdx: number) {
+    patch(c => ({ ...c, projects: (c.projects ?? []).map((p, i) => i === projIdx ? { ...p, bullets: p.bullets.filter((_, j) => j !== bIdx) } : p) }));
+  }
+
+  // ── Certifications mutators ───────────────────────────────────────────────
+  function addCertification() {
+    patch(c => ({ ...c, certifications: [...(c.certifications ?? []), { name: "", issuer: "" }] }));
+  }
+  function deleteCertification(idx: number) {
+    patch(c => ({ ...c, certifications: (c.certifications ?? []).filter((_, i) => i !== idx) }));
+  }
+  function updateCertification(idx: number, field: string, val: string) {
+    patch(c => ({ ...c, certifications: (c.certifications ?? []).map((cert, i) => i === idx ? { ...cert, [field]: val } : cert) }));
+  }
+
   // ── Section name / custom section mutators ────────────────────────────────
   function renameSectionLabel(id: string, name: string) {
     if (id.startsWith("custom_")) {
@@ -1140,15 +1225,28 @@ export function ResumeSplitEditor() {
           {/* ── Template ─────────────────────────────────────────────────── */}
           <div className="px-4 pt-4 pb-3 border-b border-white/5">
             <SectionHeader label="Template" />
-            <div className="grid grid-cols-5 gap-1">
-              {TEMPLATES.map(t => (
-                <button key={t.id} onClick={() => setSelectedTemplate(t.id)}
-                  className={`py-1.5 rounded-lg text-[10px] font-medium border transition-all
-                    ${selectedTemplate === t.id ? "border-primary bg-primary/12 text-primary" : "border-white/8 text-on-surface-variant/50 hover:border-white/20 hover:bg-white/5"}`}>
-                  {t.label}
-                </button>
-              ))}
+            <div className="grid grid-cols-5 gap-1.5">
+              {TEMPLATES.map(t => {
+                const badge = ATS_BADGE[t.ats]!;
+                const active = selectedTemplate === t.id;
+                return (
+                  <button key={t.id} onClick={() => setSelectedTemplate(t.id)}
+                    className={`flex flex-col gap-1 rounded-lg p-1 border transition-all text-left
+                      ${active ? "border-primary/60" : "border-white/8 hover:border-white/20"}`}>
+                    <TemplateThumbnail id={t.id} active={active} />
+                    <span className={`text-[9px] font-semibold leading-tight truncate w-full ${active ? "text-primary" : "text-white/50"}`}>
+                      {t.label}
+                    </span>
+                    <span className="text-[8px] font-bold" style={{ color: badge.color }}>{badge.label}</span>
+                  </button>
+                );
+              })}
             </div>
+            {selectedTemplate === "modern" && (
+              <p className="mt-2 text-[9px] text-amber-400/80 leading-snug">
+                ⚠ Sidebar layout may not parse correctly in ATS systems. Use ATS-Ready for mass applications.
+              </p>
+            )}
           </div>
 
           {/* ── Style ────────────────────────────────────────────────────── */}
@@ -1592,6 +1690,104 @@ export function ResumeSplitEditor() {
                 )}
               </div>
             ))}
+
+            {/* Projects */}
+            {sectionOrder.includes("projects") && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 px-1">
+                  <p className="text-[10px] font-semibold text-on-surface-variant/40 uppercase tracking-wider flex-1">Projects</p>
+                  <button onClick={addProject}
+                    className="h-5 px-1.5 rounded bg-white/5 border border-white/10 text-[10px] text-on-surface-variant/50 hover:bg-white/10 flex items-center gap-0.5 shrink-0">
+                    <Plus className="h-2.5 w-2.5" /> Add
+                  </button>
+                </div>
+                {(content.projects ?? []).length === 0 ? (
+                  <button onClick={addProject}
+                    className="w-full py-3 rounded-xl border border-dashed border-white/10 text-xs text-on-surface-variant/30 hover:border-white/20 hover:text-on-surface-variant/50 transition-all flex items-center justify-center gap-1">
+                    <Plus className="h-3 w-3" /> Add project
+                  </button>
+                ) : (content.projects ?? []).map((proj, i) => (
+                  <div key={i} className="p-3 rounded-xl bg-white/3 border border-white/6 hover:border-white/10 transition-colors space-y-1.5">
+                    <div className="flex items-start gap-2">
+                      <EditableField value={proj.name} placeholder="Project name" onSave={v => updateProject(i, "name", v)}
+                        className="text-sm font-medium text-on-surface flex-1 min-w-0" />
+                      <button onClick={() => deleteProject(i)} className="text-on-surface-variant/55 hover:text-red-400 transition-colors shrink-0">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                    <EditableField value={proj.tech?.join(", ") ?? ""} placeholder="Tech stack (comma-separated)"
+                      onSave={v => updateProject(i, "tech", v.split(",").map(s => s.trim()).filter(Boolean))}
+                      className="text-xs text-on-surface-variant/50" />
+                    <div className="flex gap-2">
+                      <EditableField value={proj.url ?? ""} placeholder="Live URL" onSave={v => updateProject(i, "url", v)}
+                        className="text-xs text-on-surface-variant/40 flex-1 min-w-0" />
+                      <EditableField value={proj.github ?? ""} placeholder="GitHub URL" onSave={v => updateProject(i, "github", v)}
+                        className="text-xs text-on-surface-variant/40 flex-1 min-w-0" />
+                    </div>
+                    {proj.bullets.length > 0 && (
+                      <div className="rounded-lg border border-white/5 overflow-hidden">
+                        {proj.bullets.map((b, j) => (
+                          <div key={j} className="group/brow flex items-start">
+                            <div className="flex-1 min-w-0">
+                              <EditableBullet value={b} onChange={v => updateProjectBullet(i, j, v)} />
+                            </div>
+                            <button onClick={() => deleteProjectBullet(i, j)}
+                              className="mt-2 mr-1.5 opacity-0 group-hover/brow:opacity-100 text-on-surface-variant/30 hover:text-red-400 transition-all shrink-0">
+                              <X className="h-2.5 w-2.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <button onClick={() => addProjectBullet(i)}
+                      className="text-[10px] text-on-surface-variant/60 hover:text-on-surface-variant/90 flex items-center gap-1 transition-colors">
+                      <Plus className="h-2.5 w-2.5" /> Add bullet
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Certifications */}
+            {sectionOrder.includes("certifications") && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 px-1">
+                  <p className="text-[10px] font-semibold text-on-surface-variant/40 uppercase tracking-wider flex-1">Certifications</p>
+                  <button onClick={addCertification}
+                    className="h-5 px-1.5 rounded bg-white/5 border border-white/10 text-[10px] text-on-surface-variant/50 hover:bg-white/10 flex items-center gap-0.5 shrink-0">
+                    <Plus className="h-2.5 w-2.5" /> Add
+                  </button>
+                </div>
+                {(content.certifications ?? []).length === 0 ? (
+                  <button onClick={addCertification}
+                    className="w-full py-3 rounded-xl border border-dashed border-white/10 text-xs text-on-surface-variant/30 hover:border-white/20 hover:text-on-surface-variant/50 transition-all flex items-center justify-center gap-1">
+                    <Plus className="h-3 w-3" /> Add certification
+                  </button>
+                ) : (content.certifications ?? []).map((cert, i) => (
+                  <div key={i} className="p-3 rounded-xl bg-white/3 border border-white/6 hover:border-white/10 transition-colors space-y-1.5">
+                    <div className="flex items-start gap-2">
+                      <EditableField value={cert.name} placeholder="Certification name" onSave={v => updateCertification(i, "name", v)}
+                        className="text-sm font-medium text-on-surface flex-1 min-w-0" />
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <EditableField value={cert.date ?? ""} placeholder="Date" onSave={v => updateCertification(i, "date", v)}
+                          className="text-xs text-on-surface-variant/50" />
+                        <button onClick={() => deleteCertification(i)} className="text-on-surface-variant/55 hover:text-red-400 transition-colors">
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                    <EditableField value={cert.issuer} placeholder="Issuing organization" onSave={v => updateCertification(i, "issuer", v)}
+                      className="text-xs text-on-surface-variant/60" />
+                    <div className="flex gap-3">
+                      <EditableField value={cert.credentialId ?? ""} placeholder="Credential ID" onSave={v => updateCertification(i, "credentialId", v)}
+                        className="text-xs text-on-surface-variant/40 flex-1 min-w-0" />
+                      <EditableField value={cert.expiry ?? ""} placeholder="Expiry" onSave={v => updateCertification(i, "expiry", v)}
+                        className="text-xs text-on-surface-variant/40" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Keywords injected */}
             {content.keywords_added.length > 0 && (
