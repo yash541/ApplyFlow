@@ -1,13 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Mail, Zap, RefreshCw, CheckCircle2 } from "lucide-react";
 import { GradientText } from "@applyflow/ui";
 import { useAuthStore } from "@/store/auth";
 import { api } from "@/lib/api";
 
 export default function VerifyEmailPage() {
-  const user = useAuthStore((s) => s.user);
+  const router    = useRouter();
+  const user      = useAuthStore((s) => s.user);
+  const clearAuth = useAuthStore((s) => s.clearAuth);
   const [resending, setResending] = useState(false);
   const [resent, setResent] = useState(false);
   const [error, setError] = useState("");
@@ -98,6 +101,16 @@ export default function VerifyEmailPage() {
           <p className="text-xs text-white/25">
             Link expires in 24 hours. Check your spam folder if you don&apos;t see it.
           </p>
+
+          <div className="h-px bg-white/[0.06]" />
+
+          <button
+            onClick={() => { clearAuth(); router.push("/login"); }}
+            className="text-xs text-white/30 hover:text-white/60 transition-colors"
+          >
+            Wrong email or want to use a different account?{" "}
+            <span className="underline underline-offset-2">Back to login</span>
+          </button>
         </div>
       </div>
     </div>
