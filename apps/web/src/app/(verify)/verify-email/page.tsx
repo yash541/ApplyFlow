@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Mail, Zap, RefreshCw, CheckCircle2 } from "lucide-react";
 import { GradientText } from "@applyflow/ui";
@@ -10,8 +10,28 @@ import { api } from "@/lib/api";
 export default function VerifyEmailPage() {
   const router    = useRouter();
   const user      = useAuthStore((s) => s.user);
+  const setAuth   = useAuthStore((s) => s.setAuth);
+  const token     = useAuthStore((s) => s.token);
   const clearAuth = useAuthStore((s) => s.clearAuth);
   const [resending, setResending] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    intervalRef.current = setInterval(async () => {
+      try {
+        const me = await api.auth.me();
+        if (me.email_verified) {
+          clearInterval(intervalRef.current!);
+          if (token) setAuth({ ...me }, token);
+          router.replace("/dashboard");
+        }
+      } catch {
+        // silently ignore — user may not be logged in yet
+      }
+    }, 4000);
+
+    return () => clearInterval(intervalRef.current!);
+  }, [router, setAuth, token]);
   const [resent, setResent] = useState(false);
   const [error, setError] = useState("");
   const [cooldown, setCooldown] = useState(0);
