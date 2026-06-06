@@ -756,12 +756,27 @@ async function smartMatchStream(
   }
 }
 
+const PROFILE_CACHE_KEY = "af_profile_cache";
+const PROFILE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
 async function getProfile() {
   try {
     if (!await getToken()) return null;
+
+    // Return cached profile if still fresh
+    const cached = await chrome.storage.local.get(PROFILE_CACHE_KEY);
+    const entry = cached[PROFILE_CACHE_KEY] as { data: unknown; ts: number } | undefined;
+    if (entry && Date.now() - entry.ts < PROFILE_CACHE_TTL_MS) {
+      return entry.data;
+    }
+
     const res = await authedFetch(`${API_BASE}/api/v1/profile/`);
     if (!res.ok) return null;
-    return await res.json();
+    const data = await res.json();
+
+    // Store with timestamp
+    await chrome.storage.local.set({ [PROFILE_CACHE_KEY]: { data, ts: Date.now() } });
+    return data;
   } catch {
     return null;
   }
@@ -775,6 +790,8 @@ async function saveLearnedFields(payload: { fields: Record<string, string> }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    // Invalidate profile cache so next autofill picks up the new learned fields
+    await chrome.storage.local.remove(PROFILE_CACHE_KEY);
     if (!res.ok) return { ok: false };
     return { ok: true };
   } catch {
