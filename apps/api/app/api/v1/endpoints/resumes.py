@@ -54,6 +54,7 @@ class UpdateResumeRequest(BaseModel):
     tailored_content: dict | None = None
     name: str | None = None
     pdf_bytes: str | None = None    # base64-encoded PDF for extension file upload
+    content: str | None = None      # raw text content (base resume edits only)
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -222,17 +223,18 @@ async def update_resume(
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
 
-    # Gate edits for free users — pro users have unlimited edits
-    if current_user.plan != "pro" and resume.edit_count >= FREE_EDIT_LIMIT:
-        raise HTTPException(
-            status_code=402,
-            detail={
-                "code": "edit_limit_exceeded",
-                "edit_count": resume.edit_count,
-                "limit": FREE_EDIT_LIMIT,
-                "message": f"Free accounts are limited to {FREE_EDIT_LIMIT} edits per resume. Upgrade to Pro for unlimited editing.",
-            },
-        )
+    # Edit limit only applies to tailored resumes — base resumes are always editable
+    if resume.type == "tailored":
+        if current_user.plan != "pro" and resume.edit_count >= FREE_EDIT_LIMIT:
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "code": "edit_limit_exceeded",
+                    "edit_count": resume.edit_count,
+                    "limit": FREE_EDIT_LIMIT,
+                    "message": f"Free accounts are limited to {FREE_EDIT_LIMIT} edits per resume. Upgrade to Pro for unlimited editing.",
+                },
+            )
 
     if request.tailored_content is not None:
         resume.tailored_content = request.tailored_content
@@ -243,8 +245,12 @@ async def update_resume(
         resume.name = request.name
     if request.pdf_bytes is not None:
         resume.pdf_bytes = request.pdf_bytes
+    if request.content is not None and resume.type == "base":
+        resume.content = request.content
 
-    resume.edit_count += 1
+    # Only count edits for tailored resumes
+    if resume.type == "tailored":
+        resume.edit_count += 1
 
     await db.flush()
     await db.refresh(resume)

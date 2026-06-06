@@ -184,7 +184,7 @@ export const api = {
     }) =>
       request<ResumeData>("/api/v1/resumes/tailored", { method: "POST", body: data }),
 
-    update: (id: string, data: { tailored_content?: Record<string, unknown>; name?: string; pdf_bytes?: string }) =>
+    update: (id: string, data: { tailored_content?: Record<string, unknown>; name?: string; pdf_bytes?: string; content?: string }) =>
       request<ResumeData>(`/api/v1/resumes/${id}`, { method: "PUT", body: data }),
 
     getPdfBytes: (id: string) =>

@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { createPortal } from "react-dom";
 import {
   FileText, Trash2, Clock, Wand2, Sparkles, Pencil,
-  Eye, Lock, X, Loader2, Download,
+  Eye, Lock, X, Loader2, Download, Check,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { GlassPanel } from "@applyflow/ui";
@@ -136,6 +136,9 @@ export function ResumeList() {
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [confirmDownload, setConfirmDownload] = useState<ResumeData | null>(null);
+  // Base resume editor state
+  const [editingBase, setEditingBase] = useState<{ id: string; name: string; content: string } | null>(null);
+  const [baseEditSaving, setBaseEditSaving] = useState(false);
 
   const { data: resumeData, isLoading: resumesLoading } = useQuery({
     queryKey: ["resumes"],
@@ -252,6 +255,31 @@ export function ResumeList() {
     }
   }
 
+  async function handleOpenBaseEdit(resume: ResumeData) {
+    setLoadingId(resume.id);
+    try {
+      const full = await api.resumes.get(resume.id);
+      setEditingBase({ id: full.id, name: full.name, content: full.content ?? "" });
+    } finally {
+      setLoadingId(null);
+    }
+  }
+
+  async function handleSaveBase() {
+    if (!editingBase) return;
+    setBaseEditSaving(true);
+    try {
+      await api.resumes.update(editingBase.id, { name: editingBase.name, content: editingBase.content });
+      queryClient.invalidateQueries({ queryKey: ["resumes"] });
+      broadcastInvalidate(["resumes"]);
+      setEditingBase(null);
+    } catch {
+      // keep modal open on error
+    } finally {
+      setBaseEditSaving(false);
+    }
+  }
+
   const resumes = resumeData?.resumes ?? [];
   const baseResumes     = resumes.filter((r) => r.type === "base");
   const tailoredResumes = resumes.filter((r) => r.type === "tailored" && !!r.application_id);
@@ -305,9 +333,9 @@ export function ResumeList() {
                     isLoading={loadingId === resume.id}
                     isViewLoading={viewLoadingId === resume.id}
                     appStatus={null}
-                    canEdit={false}
+                    canEdit={true}
                     onUse={() => void handleUse(resume)}
-                    onEdit={() => void handleEdit(resume)}
+                    onEdit={() => void handleOpenBaseEdit(resume)}
                     onView={() => void handleView(resume)}
                     onDelete={() => deleteMutation.mutate(resume.id)}
                   />
@@ -375,6 +403,57 @@ export function ResumeList() {
 
       {viewPayload && (
         <ResumeViewerModal payload={viewPayload} onClose={() => setViewPayload(null)} />
+      )}
+
+      {/* Base resume text editor modal */}
+      {editingBase && createPortal(
+        <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#0f0f1f] shadow-2xl flex flex-col max-h-[85vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-white/8 shrink-0">
+              <div>
+                <h3 className="text-sm font-semibold text-white/90">Edit Base Resume</h3>
+                <p className="text-xs text-white/40 mt-0.5">Changes update the source text used for AI tailoring</p>
+              </div>
+              <button onClick={() => setEditingBase(null)} className="h-7 w-7 flex items-center justify-center rounded-lg text-white/35 hover:text-white hover:bg-white/8 transition-all">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            {/* Name */}
+            <div className="px-5 pt-4 shrink-0">
+              <label className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">Resume name</label>
+              <input
+                value={editingBase.name}
+                onChange={e => setEditingBase(b => b ? { ...b, name: e.target.value } : b)}
+                className="mt-1.5 w-full h-8 px-3 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-primary/40"
+              />
+            </div>
+            {/* Content */}
+            <div className="px-5 pt-3 flex-1 min-h-0 flex flex-col">
+              <label className="text-[10px] font-semibold text-white/40 uppercase tracking-wider shrink-0">Resume content</label>
+              <textarea
+                value={editingBase.content}
+                onChange={e => setEditingBase(b => b ? { ...b, content: e.target.value } : b)}
+                className="mt-1.5 flex-1 w-full px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-xs text-white/80 font-mono leading-relaxed placeholder:text-white/30 focus:outline-none focus:border-primary/40 resize-none"
+                placeholder="Resume text content…"
+              />
+            </div>
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-white/8 shrink-0">
+              <button onClick={() => setEditingBase(null)} className="h-8 px-4 rounded-lg text-xs text-white/50 hover:text-white/80 hover:bg-white/5 transition-all">
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleSaveBase()}
+                disabled={baseEditSaving}
+                className="h-8 px-5 rounded-lg text-xs font-semibold bg-primary/90 hover:bg-primary text-white transition-all flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {baseEditSaving ? <><Loader2 className="h-3 w-3 animate-spin" /> Saving…</> : <><Check className="h-3 w-3" /> Save changes</>}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* Download-again confirmation modal */}
@@ -527,17 +606,27 @@ function ResumeRow({
               {isLoading ? "Loading…" : <><Pencil className="h-3.5 w-3.5" /> Edit</>}
             </button>
           ) : (
-            // Submitted — edit disabled
             <span className="h-8 px-3 rounded-lg border border-white/8 flex items-center gap-1.5 text-label-sm text-on-surface-variant/30 cursor-not-allowed">
               <Lock className="h-3.5 w-3.5" /> Locked
             </span>
           )
         ) : (
-          isSelected ? (
-            <span className="text-label-sm text-primary font-medium px-2 py-1 rounded-lg bg-primary/10">
-              Selected
-            </span>
-          ) : (
+          <>
+            {/* Edit button for base resumes */}
+            <button
+              onClick={onEdit}
+              disabled={isLoading}
+              title="Edit resume text"
+              className="h-8 px-3 rounded-lg border flex items-center gap-1.5 text-label-sm font-medium transition-colors disabled:opacity-50
+                border-white/10 text-on-surface-variant/60 hover:text-white hover:bg-white/8"
+            >
+              {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><Pencil className="h-3.5 w-3.5" /> Edit</>}
+            </button>
+            {isSelected ? (
+              <span className="text-label-sm text-primary font-medium px-2 py-1 rounded-lg bg-primary/10">
+                Selected
+              </span>
+            ) : (
             <button
               onClick={onUse}
               disabled={isLoading}
@@ -546,7 +635,8 @@ function ResumeRow({
             >
               {isLoading ? "Loading…" : <><Wand2 className="h-3.5 w-3.5" /> Use</>}
             </button>
-          )
+            )}
+          </>
         )}
 
         <button
