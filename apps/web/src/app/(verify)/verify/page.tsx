@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle2, XCircle, Loader2, Zap } from "lucide-react";
 import { GradientText } from "@applyflow/ui";
 import { api } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 
-export default function VerifyPage() {
+function VerifyContent() {
   const router      = useRouter();
   const params      = useSearchParams();
   const token       = params.get("token") ?? "";
@@ -103,5 +103,13 @@ export default function VerifyPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function VerifyPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="h-8 w-8 text-primary animate-spin" /></div>}>
+      <VerifyContent />
+    </Suspense>
   );
 }
