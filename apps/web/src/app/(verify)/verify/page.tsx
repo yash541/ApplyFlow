@@ -28,7 +28,7 @@ function VerifyContent() {
           setAuth({ ...user, email_verified: true }, storeToken);
         }
         setStatus("success");
-        setTimeout(() => router.replace("/home"), 2500);
+        setTimeout(() => router.replace("/dashboard"), 2500);
       })
       .catch((err: unknown) => {
         setStatus("error");

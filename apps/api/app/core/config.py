@@ -37,7 +37,7 @@ class Settings(BaseSettings):
 
     # Email (Resend)
     RESEND_API_KEY: str = ""
-    FROM_EMAIL: str = "ApplyFlow <noreply@applyflow.com>"
+    FROM_EMAIL: str = "ApplyFlow <noreply@applyflow.in>"
 
     # Stripe
     STRIPE_SECRET_KEY: str = ""
