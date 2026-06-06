@@ -251,29 +251,29 @@ function EditableField({
 
   if (editing) {
     return (
-      <textarea
-        autoFocus
-        value={draft}
-        rows={1}
-        onChange={e => {
-          setDraft(e.target.value);
-          // Auto-resize: shrink then grow to fit content
-          e.target.style.height = "auto";
-          e.target.style.height = `${e.target.scrollHeight}px`;
-        }}
-        onFocus={e => {
-          e.target.style.height = "auto";
-          e.target.style.height = `${e.target.scrollHeight}px`;
-        }}
-        onBlur={() => { onSave(draft); setEditing(false); }}
-        onKeyDown={e => {
-          if (e.key === "Escape") { setDraft(value); setEditing(false); }
-          // Enter saves only if Shift not held; Shift+Enter inserts newline
-          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onSave(draft); setEditing(false); }
-        }}
-        className={`bg-surface-container-high border border-primary/50 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary/40 w-full resize-none overflow-hidden leading-snug ${className}`}
-        style={{ minHeight: "1.75rem" }}
-      />
+      <div className={className}>
+        <textarea
+          autoFocus
+          value={draft}
+          rows={1}
+          onChange={e => {
+            setDraft(e.target.value);
+            e.target.style.height = "auto";
+            e.target.style.height = `${e.target.scrollHeight}px`;
+          }}
+          onFocus={e => {
+            e.target.style.height = "auto";
+            e.target.style.height = `${e.target.scrollHeight}px`;
+          }}
+          onBlur={() => { onSave(draft); setEditing(false); }}
+          onKeyDown={e => {
+            if (e.key === "Escape") { setDraft(value); setEditing(false); }
+            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onSave(draft); setEditing(false); }
+          }}
+          className="bg-surface-container-high border border-primary/50 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary/40 w-full resize-none overflow-hidden leading-snug"
+          style={{ minHeight: "1.75rem" }}
+        />
+      </div>
     );
   }
   return (
