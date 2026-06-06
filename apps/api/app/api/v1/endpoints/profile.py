@@ -167,7 +167,7 @@ RESUME:
 {resume.content}"""
 
     response = client.messages.create(
-        model=settings.DEFAULT_AI_MODEL,
+        model=settings.FAST_AI_MODEL,
         max_tokens=2048,
         messages=[{"role": "user", "content": prompt}],
     )

@@ -872,7 +872,7 @@ async def map_output_with_claude(
 
     client = _anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
     msg = client.messages.create(
-        model=settings.DEFAULT_AI_MODEL,
+        model=settings.FAST_AI_MODEL,
         max_tokens=256,
         messages=[{"role": "user", "content": prompt}],
     )

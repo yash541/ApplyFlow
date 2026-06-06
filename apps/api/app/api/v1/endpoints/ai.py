@@ -1,3 +1,5 @@
+import hashlib
+import time
 import uuid
 from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse
@@ -16,6 +18,30 @@ from app.core.usage import check_and_increment_usage
 from app.models import User, Resume, Application, UserProfile
 
 router = APIRouter()
+
+# ── Match score in-memory cache (30-min TTL) ─────────────────────────────────
+# Key: sha256(job_description + resume_id). Avoids duplicate Claude calls when
+# the same user views the same job listing multiple times in a session.
+_SCORE_CACHE: dict[str, tuple[dict, float]] = {}
+_SCORE_CACHE_TTL = 30 * 60  # 30 minutes
+
+
+def _score_cache_key(description: str, resume_id: str | None) -> str:
+    raw = f"{description[:3000]}:{resume_id or ''}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def _get_cached_score(key: str) -> dict | None:
+    entry = _SCORE_CACHE.get(key)
+    if entry and time.time() - entry[1] < _SCORE_CACHE_TTL:
+        return entry[0]
+    if entry:
+        del _SCORE_CACHE[key]
+    return None
+
+
+def _set_cached_score(key: str, value: dict) -> None:
+    _SCORE_CACHE[key] = (value, time.time())
 
 
 # ── Request / Response models ─────────────────────────────────────────────────
@@ -92,6 +118,12 @@ async def match_job(
     # Gate: check + increment usage for free users
     await check_and_increment_usage(current_user, db, "match_scores")
     await db.commit()
+
+    # Return cached score if available (same job+resume within 30 min)
+    cache_key = _score_cache_key(body.description, body.resume_id)
+    cached = _get_cached_score(cache_key)
+    if cached:
+        return MatchResponse(**cached)
 
     if not settings.ANTHROPIC_API_KEY:
         return MatchResponse(
@@ -189,7 +221,7 @@ Return ONLY valid JSON:
         raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         data = json.loads(raw)
 
-        return MatchResponse(
+        result_data = dict(
             overall_score=max(0, min(100, int(data.get("overall_score", 65)))),
             skill_match=max(0, min(100, int(data.get("skill_match", 65)))),
             experience_match=max(0, min(100, int(data.get("experience_match", 65)))),
@@ -199,6 +231,8 @@ Return ONLY valid JSON:
             reasoning=str(data.get("reasoning", ""))[:200],
             profile_complete=profile_complete,
         )
+        _set_cached_score(cache_key, result_data)
+        return MatchResponse(**result_data)
     except Exception as exc:
         # Fallback — never block the page load
         return MatchResponse(
@@ -411,7 +445,7 @@ async def extract_job(
     client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
     try:
         msg = client.messages.create(
-            model=settings.DEFAULT_AI_MODEL,
+            model=settings.FAST_AI_MODEL,
             max_tokens=512,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -465,7 +499,7 @@ async def rewrite_bullet(
     client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
     try:
         msg = client.messages.create(
-            model=settings.DEFAULT_AI_MODEL,
+            model=settings.FAST_AI_MODEL,
             max_tokens=300,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -505,7 +539,7 @@ async def rewrite_summary(
     client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
     try:
         msg = client.messages.create(
-            model=settings.DEFAULT_AI_MODEL,
+            model=settings.FAST_AI_MODEL,
             max_tokens=400,
             messages=[{"role": "user", "content": prompt}],
         )

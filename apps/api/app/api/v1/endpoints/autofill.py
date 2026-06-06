@@ -163,7 +163,7 @@ def _ai_match(
 
     client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
     response = client.messages.create(
-        model=settings.DEFAULT_AI_MODEL,
+        model=settings.FAST_AI_MODEL,
         max_tokens=1024,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -410,7 +410,7 @@ async def regenerate_field(
     try:
         client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
         msg = client.messages.create(
-            model=settings.DEFAULT_AI_MODEL,
+            model=settings.FAST_AI_MODEL,
             max_tokens=256,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -670,7 +670,7 @@ async def smart_match(
         return {"answers": []}
 
     client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
-    model  = settings.DEFAULT_AI_MODEL
+    model  = settings.FAST_AI_MODEL
 
     # Fire all fields concurrently
     tasks = [
