@@ -407,49 +407,90 @@ export function ResumeList() {
 
       {/* Base resume text editor modal */}
       {editingBase && createPortal(
-        <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-2xl border border-white/10 bg-[#0f0f1f] shadow-2xl flex flex-col max-h-[85vh]">
+        <div className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+          <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-[#0c0c1a] shadow-2xl flex flex-col"
+               style={{ height: "min(78vh, 640px)" }}>
+
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-white/8 shrink-0">
-              <div>
-                <h3 className="text-sm font-semibold text-white/90">Edit Base Resume</h3>
-                <p className="text-xs text-white/40 mt-0.5">Changes update the source text used for AI tailoring</p>
+            <div className="flex items-center justify-between px-6 py-5 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-primary/15 border border-primary/20 flex items-center justify-center shrink-0">
+                  <FileText className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-white">Edit Base Resume</h3>
+                  <p className="text-xs text-white/40 mt-0.5">Source text used for AI tailoring</p>
+                </div>
               </div>
-              <button onClick={() => setEditingBase(null)} className="h-7 w-7 flex items-center justify-center rounded-lg text-white/35 hover:text-white hover:bg-white/8 transition-all">
+              <button
+                onClick={() => setEditingBase(null)}
+                className="h-8 w-8 flex items-center justify-center rounded-lg text-white/30 hover:text-white hover:bg-white/8 transition-all"
+              >
                 <X className="h-4 w-4" />
               </button>
             </div>
-            {/* Name */}
-            <div className="px-5 pt-4 shrink-0">
-              <label className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">Resume name</label>
-              <input
-                value={editingBase.name}
-                onChange={e => setEditingBase(b => b ? { ...b, name: e.target.value } : b)}
-                className="mt-1.5 w-full h-8 px-3 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-primary/40"
-              />
+
+            <div className="h-px bg-white/[0.06] shrink-0 mx-6" />
+
+            {/* Body */}
+            <div className="flex flex-col gap-4 px-6 py-4 flex-1 min-h-0">
+
+              {/* Name field */}
+              <div className="shrink-0 space-y-1.5">
+                <label className="text-xs font-medium text-white/50">Resume name</label>
+                <input
+                  value={editingBase.name}
+                  onChange={e => setEditingBase(b => b ? { ...b, name: e.target.value } : b)}
+                  className="w-full h-9 px-3.5 rounded-xl bg-white/[0.05] border border-white/10 text-sm text-white placeholder:text-white/25
+                             focus:outline-none focus:border-primary/50 focus:bg-white/[0.07] transition-colors"
+                />
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 min-h-0 flex flex-col space-y-1.5">
+                <div className="flex items-center justify-between shrink-0">
+                  <label className="text-xs font-medium text-white/50">Content</label>
+                  <span className="text-[10px] text-white/25 tabular-nums">
+                    {editingBase.content.length.toLocaleString()} chars
+                  </span>
+                </div>
+                <textarea
+                  value={editingBase.content}
+                  onChange={e => setEditingBase(b => b ? { ...b, content: e.target.value } : b)}
+                  className="flex-1 w-full px-3.5 py-3 rounded-xl bg-white/[0.04] border border-white/8 text-xs text-white/75
+                             font-mono leading-relaxed placeholder:text-white/20
+                             focus:outline-none focus:border-primary/40 focus:bg-white/[0.06] transition-colors resize-none"
+                  placeholder="Resume text content…"
+                  spellCheck={false}
+                />
+              </div>
             </div>
-            {/* Content */}
-            <div className="px-5 pt-3 flex-1 min-h-0 flex flex-col">
-              <label className="text-[10px] font-semibold text-white/40 uppercase tracking-wider shrink-0">Resume content</label>
-              <textarea
-                value={editingBase.content}
-                onChange={e => setEditingBase(b => b ? { ...b, content: e.target.value } : b)}
-                className="mt-1.5 flex-1 w-full px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 text-xs text-white/80 font-mono leading-relaxed placeholder:text-white/30 focus:outline-none focus:border-primary/40 resize-none"
-                placeholder="Resume text content…"
-              />
-            </div>
+
             {/* Footer */}
-            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-white/8 shrink-0">
-              <button onClick={() => setEditingBase(null)} className="h-8 px-4 rounded-lg text-xs text-white/50 hover:text-white/80 hover:bg-white/5 transition-all">
-                Cancel
-              </button>
-              <button
-                onClick={() => void handleSaveBase()}
-                disabled={baseEditSaving}
-                className="h-8 px-5 rounded-lg text-xs font-semibold bg-primary/90 hover:bg-primary text-white transition-all flex items-center gap-1.5 disabled:opacity-50"
-              >
-                {baseEditSaving ? <><Loader2 className="h-3 w-3 animate-spin" /> Saving…</> : <><Check className="h-3 w-3" /> Save changes</>}
-              </button>
+            <div className="h-px bg-white/[0.06] shrink-0 mx-6" />
+            <div className="flex items-center justify-between px-6 py-4 shrink-0">
+              <p className="text-[11px] text-white/25 hidden sm:block">
+                Original PDF is unchanged
+              </p>
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  onClick={() => setEditingBase(null)}
+                  className="h-9 px-4 rounded-xl text-sm text-white/45 hover:text-white/80 hover:bg-white/5 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => void handleSaveBase()}
+                  disabled={baseEditSaving}
+                  className="h-9 px-5 rounded-xl text-sm font-semibold bg-primary hover:bg-primary/90 text-white
+                             transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {baseEditSaving
+                    ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</>
+                    : <><Check className="h-3.5 w-3.5" /> Save changes</>
+                  }
+                </button>
+              </div>
             </div>
           </div>
         </div>,
