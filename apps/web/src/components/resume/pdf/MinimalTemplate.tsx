@@ -105,9 +105,9 @@ export function MinimalTemplate({ content, accentColor, fontStyle, compact, layo
     ),
     projects: (content.projects?.length ?? 0) > 0 && (
       <View key="projects" style={{ marginBottom: secGap }}>
-        <Text style={{ ...headerStyle, marginBottom: headerGap }}>{getSectionLabel("projects", content)}</Text>
         {content.projects!.map((proj, i) => (
           <View key={i} wrap={false} style={{ marginBottom: c.jobGap }}>
+            {i === 0 && <Text style={{ ...headerStyle, marginBottom: headerGap }}>{getSectionLabel("projects", content)}</Text>}
             <View style={{ flexDirection: "row", marginBottom: 1 }}>
               <Text style={{ flex: 1, fontSize: c.fs + 1, fontFamily: ff(true), minWidth: 0 }}>{proj.name}</Text>
               {(proj.url || proj.github) && (
@@ -131,9 +131,9 @@ export function MinimalTemplate({ content, accentColor, fontStyle, compact, layo
     ),
     certifications: (content.certifications?.length ?? 0) > 0 && (
       <View key="certifications" style={{ marginBottom: secGap }}>
-        <Text style={{ ...headerStyle, marginBottom: headerGap }}>{getSectionLabel("certifications", content)}</Text>
         {content.certifications!.map((cert, i) => (
           <View key={i} wrap={false} style={{ marginBottom: 5 }}>
+            {i === 0 && <Text style={{ ...headerStyle, marginBottom: headerGap }}>{getSectionLabel("certifications", content)}</Text>}
             <View style={{ flexDirection: "row" }}>
               <Text style={{ flex: 1, fontFamily: ff(true), fontSize: c.fs, minWidth: 0 }}>{cert.name}</Text>
               {cert.date && <Text style={{ fontSize: c.fsTiny, color: "#aaa", flexShrink: 0 }}>{cert.date}</Text>}
