@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     DEFAULT_AI_MODEL: str = "claude-sonnet-4-6"
     FAST_AI_MODEL: str = "claude-haiku-4-5-20251001"
 
+    # Email (Resend)
+    RESEND_API_KEY: str = ""
+    FROM_EMAIL: str = "ApplyFlow <noreply@applyflow.com>"
+
     # Stripe
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = "whsec_placeholder"

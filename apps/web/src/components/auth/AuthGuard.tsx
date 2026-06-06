@@ -7,21 +7,22 @@ import { useAuthStore } from "@/store/auth";
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const token = useAuthStore((s) => s.token);
+  const user  = useAuthStore((s) => s.user);
   const [hydrated, setHydrated] = useState(false);
 
-  useEffect(() => {
-    setHydrated(true);
-  }, []);
+  useEffect(() => { setHydrated(true); }, []);
 
   useEffect(() => {
-    if (hydrated && !token) {
-      router.replace("/login");
+    if (!hydrated) return;
+    if (!token) { router.replace("/login"); return; }
+    if (user && user.email_verified === false) {
+      router.replace("/verify-email");
     }
-  }, [hydrated, token, router]);
+  }, [hydrated, token, user, router]);
 
-  // Show nothing until we know whether the user is authed
   if (!hydrated) return null;
   if (!token) return null;
+  if (user && user.email_verified === false) return null;
 
   return <>{children}</>;
 }

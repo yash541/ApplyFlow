@@ -23,7 +23,7 @@ export function SignupForm() {
     try {
       const data = await api.auth.register(name, email, password);
       setAuth(data.user, data.access_token);
-      router.push("/dashboard");
+      router.push("/verify-email");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {

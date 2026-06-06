@@ -7,6 +7,7 @@ interface AuthUser {
   id: string;
   name: string;
   email: string;
+  email_verified?: boolean;
 }
 
 interface AuthState {

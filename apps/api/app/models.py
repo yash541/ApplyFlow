@@ -18,6 +18,9 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+    # Email verification
+    email_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
     # Billing / plan
     plan: Mapped[str] = mapped_column(String(20), nullable=False, default="free")
     has_had_pro: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -194,3 +197,14 @@ class UserUsage(Base):
     __table_args__ = (UniqueConstraint("user_id", "month", name="uq_user_usage_user_month"),)
 
     user: Mapped["User"] = relationship("User", back_populates="usage")
+
+
+class EmailVerification(Base):
+    """Pending email verification tokens. Deleted once verified."""
+    __tablename__ = "email_verifications"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

@@ -137,17 +137,21 @@ export interface ApplicationData {
 export const api = {
   auth: {
     login: (email: string, password: string) =>
-      request<{ access_token: string; user: { id: string; name: string; email: string } }>(
+      request<{ access_token: string; user: { id: string; name: string; email: string; email_verified: boolean } }>(
         "/api/v1/auth/login",
         { method: "POST", body: { email, password } },
       ),
     register: (name: string, email: string, password: string) =>
-      request<{ access_token: string; user: { id: string; name: string; email: string } }>(
+      request<{ access_token: string; user: { id: string; name: string; email: string; email_verified: boolean } }>(
         "/api/v1/auth/register",
         { method: "POST", body: { name, email, password } },
       ),
     me: () =>
-      request<{ id: string; name: string; email: string }>("/api/v1/auth/me"),
+      request<{ id: string; name: string; email: string; email_verified: boolean }>("/api/v1/auth/me"),
+    verifyEmail: (token: string) =>
+      request<{ message: string }>(`/api/v1/auth/verify?token=${encodeURIComponent(token)}`, { method: "GET" }),
+    resendVerification: () =>
+      request<{ message: string }>("/api/v1/auth/resend-verification", { method: "POST" }),
   },
 
   resumes: {
