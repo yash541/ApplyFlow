@@ -388,7 +388,7 @@ function EditableBullet({ value, onChange, role }: {
           ${isLong ? "border-amber-500/20 bg-amber-500/5" : "border-white/6 bg-white/[0.02] hover:bg-white/5 hover:border-white/10"}`}
       >
         <span className="text-primary/60 mt-0.5 shrink-0 text-sm">•</span>
-        <span className="flex-1 text-sm text-on-surface-variant leading-relaxed cursor-text" onClick={() => setOpen(true)}>{value}</span>
+        <span className="flex-1 text-sm text-on-surface-variant leading-relaxed cursor-text break-all min-w-0" onClick={() => setOpen(true)}>{value}</span>
         {/* Always-visible edit button with background */}
         <button
           onClick={e => { e.stopPropagation(); setOpen(true); }}

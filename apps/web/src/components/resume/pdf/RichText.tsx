@@ -11,7 +11,8 @@ interface Props {
 }
 
 export function RichText({ children, style, accentColor, boldFontFamily = "Helvetica-Bold" }: Props) {
-  const baseStyle = { textAlign: "justify" as const, ...style };
+  // overflow: hidden clips unbreakable text (no spaces) so it never crosses page boundaries
+  const baseStyle = { textAlign: "justify" as const, overflow: "hidden" as const, ...style };
   const segments = parseRichText(children);
 
   // Fast path: single plain segment with no markup
