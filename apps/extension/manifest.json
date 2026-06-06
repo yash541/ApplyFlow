@@ -27,12 +27,12 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["http://localhost:3000/resume*"],
+      "matches": ["http://localhost:3000/resume*", "https://www.applyflow.in/resume*"],
       "js": ["src/content/prefill-bridge.ts"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["http://localhost:3000/*"],
+      "matches": ["http://localhost:3000/*", "https://www.applyflow.in/*"],
       "js": ["src/content/auth-bridge.ts"],
       "run_at": "document_idle"
     },
@@ -99,7 +99,8 @@
         "https://*.paylocity.com/*",
         "https://*.jobvite.com/*",
         "https://*.lever.co/*",
-        "http://localhost:3000/demo-apply*"
+        "http://localhost:3000/demo-apply*",
+        "https://www.applyflow.in/demo-apply*"
       ],
       "js": ["src/content/autofill.ts"],
       "run_at": "document_idle"
@@ -139,6 +140,8 @@
     "https://*.paylocity.com/*",
     "http://localhost:8000/*",
     "http://localhost:3000/*",
+    "https://www.applyflow.in/*",
+    "https://api.applyflow.in/*",
     "https://api.applyflow.ai/*",
     "https://boards-api.greenhouse.io/*",
     "https://api.lever.co/*",
