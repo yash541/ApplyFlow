@@ -32,6 +32,10 @@ export function GuestGuard({ children }: { children: React.ReactNode }) {
       }
     } catch { /* ignore malformed */ }
 
+    // Don't redirect unverified users — AuthGuard will handle sending them to /verify-email
+    const user = useAuthStore.getState().user;
+    if (user && user.email_verified === false) return;
+
     router.replace("/dashboard");
   }, [hydrated, token, router]);
 
