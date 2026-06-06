@@ -113,22 +113,19 @@ async def check_and_increment_usage(
     await db.flush()
 
 
-async def check_and_increment_download(user: User, db: AsyncSession) -> None:
-    """Gate and increment lifetime resume download count for free users."""
+async def check_and_increment_download(user: User, db: AsyncSession) -> bool:
+    """Increment download counter and return whether a watermark is needed.
+
+    - Pro users: always returns False (unlimited clean downloads).
+    - Free users under limit: increments counter, returns False (clean PDF).
+    - Free users at/over limit: increments counter, returns True (watermark PDF).
+
+    Never raises — downloads always succeed; quality degrades gracefully.
+    """
     if user.plan == "pro":
-        return
+        return False
 
-    if user.total_downloads >= FREE_DOWNLOAD_LIMIT:
-        raise HTTPException(
-            status_code=402,
-            detail={
-                "code": "download_limit_exceeded",
-                "usage_type": "resume_downloads",
-                "used": user.total_downloads,
-                "limit": FREE_DOWNLOAD_LIMIT,
-                "message": f"Free accounts are limited to {FREE_DOWNLOAD_LIMIT} resume download. Upgrade to Pro for unlimited downloads.",
-            },
-        )
-
+    needs_watermark = user.total_downloads >= FREE_DOWNLOAD_LIMIT
     user.total_downloads += 1
     await db.flush()
+    return needs_watermark

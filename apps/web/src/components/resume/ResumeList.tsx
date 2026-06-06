@@ -228,11 +228,8 @@ export function ResumeList() {
         old ? { resumes: old.resumes.map(r => r.id === resume.id ? { ...r, downloaded: true } : r) } : old
       );
       broadcastInvalidate(["resumes"], ["billing-usage"]);
-    } catch (err) {
-      const status = (err as { status?: number })?.status;
-      if (status === 402) {
-        openUpgrade("resume_downloads");
-      }
+    } catch {
+      // Download errors are non-fatal — watermarked PDFs still succeed
     } finally {
       setDownloadingId(null);
     }

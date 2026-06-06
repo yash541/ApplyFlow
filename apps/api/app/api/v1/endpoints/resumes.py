@@ -280,15 +280,23 @@ async def get_resume_pdf_bytes(
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
 
+    pdf_bytes = resume.pdf_bytes
+
     # Gate download for free users (only tailored resumes, only user-initiated downloads)
     if resume.type == "tailored" and not extension:
         from app.core.usage import check_and_increment_download
-        await check_and_increment_download(current_user, db)
-        # Mark resume as downloaded so the UI can show a badge
+        from app.core.watermark import add_footer_watermark
+
+        needs_watermark = await check_and_increment_download(current_user, db)
+
+        if needs_watermark and pdf_bytes:
+            pdf_bytes = add_footer_watermark(pdf_bytes)
+
+        # Mark resume as downloaded so the UI can show the badge
         resume.downloaded = True
         await db.commit()
 
-    return {"pdf_bytes": resume.pdf_bytes}
+    return {"pdf_bytes": pdf_bytes}
 
 
 @router.get("/{resume_id}")

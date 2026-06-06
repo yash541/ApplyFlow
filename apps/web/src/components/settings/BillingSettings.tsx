@@ -229,11 +229,23 @@ export function BillingSettings() {
                 Lifetime usage
               </p>
               <UsageMeter
-                label="Resume Downloads"
+                label="Clean Resume Downloads"
                 used={usage.downloads_used}
                 limit={usage.downloads_limit}
                 period="lifetime"
               />
+              {!isPro && usage.downloads_limit !== null && usage.downloads_used >= usage.downloads_limit && (
+                <p className="text-[11px] text-amber-400/70 leading-relaxed -mt-1">
+                  Further downloads include an ApplyFlow watermark.{" "}
+                  <button
+                    onClick={() => setShowUpgrade(true)}
+                    className="underline underline-offset-2 hover:text-amber-300 transition-colors"
+                  >
+                    Upgrade to Pro
+                  </button>
+                  {" "}to remove it.
+                </p>
+              )}
             </div>
           </div>
         )}
