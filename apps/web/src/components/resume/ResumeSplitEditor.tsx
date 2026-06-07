@@ -344,7 +344,7 @@ function EditableField({
 
   if (editing) {
     return (
-      <div className={className}>
+      <div className={`${className} min-w-[160px]`}>
         <textarea
           autoFocus
           value={draft}
