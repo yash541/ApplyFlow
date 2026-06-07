@@ -388,17 +388,20 @@ export async function* streamChat(message: string): AsyncGenerator<string> {
   yield* parseSSEStream(res.body);
 }
 
-export async function* streamTailor(params: {
-  resumeId?: string;
-  resumeText?: string;
-  applicationId?: string;
-  jobDescription?: string;
-}): AsyncGenerator<string> {
+export async function* streamTailor(
+  params: {
+    resumeId?: string;
+    resumeText?: string;
+    applicationId?: string;
+    jobDescription?: string;
+  },
+  signal?: AbortSignal,
+): AsyncGenerator<string> {
   const token = getToken();
   const body: Record<string, string> = {};
-  if (params.resumeId) body.resume_id = params.resumeId;
-  if (params.resumeText) body.resume_text = params.resumeText;
-  if (params.applicationId) body.application_id = params.applicationId;
+  if (params.resumeId)      body.resume_id       = params.resumeId;
+  if (params.resumeText)    body.resume_text      = params.resumeText;
+  if (params.applicationId) body.application_id  = params.applicationId;
   if (params.jobDescription) body.job_description = params.jobDescription;
 
   const res = await fetch(`${API_URL}/api/v1/ai/tailor`, {
@@ -408,6 +411,7 @@ export async function* streamTailor(params: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify(body),
+    signal,
   });
   if (!res.ok || !res.body) throw new Error("Tailor request failed");
   yield* parseSSEStream(res.body);

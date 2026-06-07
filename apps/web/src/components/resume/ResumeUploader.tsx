@@ -257,14 +257,19 @@ export function ResumeUploader() {
     setStreamPreview("");
     setTailoredContent(null);
     setIsTailoring(true);
-    setTailoringInProgress(true); // immediately switches to editor with loading state
+    setTailoringInProgress(true);
+
+    // Abort after 90s — handles Railway cold starts that never respond
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 90_000);
+
     try {
       let result = "";
-      // Prefer resume_id (DB lookup) over raw text when available
       for await (const chunk of streamTailor(
         selectedResumeId
           ? { resumeId: selectedResumeId, jobDescription: jobDesc }
-          : { resumeText: selectedContent, jobDescription: jobDesc }
+          : { resumeText: selectedContent, jobDescription: jobDesc },
+        controller.signal,
       )) {
         result += chunk;
         setStreamPreview(result);
@@ -274,19 +279,22 @@ export function ResumeUploader() {
         setTailoredContent(parsed);
         setStreamPreview("");
       } else {
-        // AI didn't return valid JSON — show raw output as fallback
-        setStreamPreview(result || "No response received.");
+        // AI returned non-JSON — reset loading state so user isn't stuck
+        setTailoringInProgress(false);
+        setStreamPreview(result || "No response received. Please try again.");
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      setTailoringInProgress(false);
       if (msg.includes("402") || msg.includes("usage_limit")) {
         openUpgrade("You've hit your usage limit. Upgrade to Pro for unlimited access.");
-        setTailoringInProgress(false);
+      } else if (msg.includes("abort") || msg.includes("AbortError")) {
+        setStreamPreview("Request timed out. The server may be starting up — please try again.");
       } else {
-        setStreamPreview("Error: could not connect to AI backend.");
-        setTailoringInProgress(false); // go back to uploader on error
+        setStreamPreview("Error: could not connect to AI backend. Please try again.");
       }
     } finally {
+      clearTimeout(timeout);
       setIsTailoring(false);
     }
   };
