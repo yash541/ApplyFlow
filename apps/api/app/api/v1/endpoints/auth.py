@@ -10,6 +10,7 @@ from sqlalchemy import select, delete
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.core.email_validation import has_mx_record
 from app.core.limiter import limiter
 from app.models import User, EmailVerification, PasswordResetToken
 
@@ -91,6 +92,13 @@ async def login(request: Request, body: LoginRequest, db: AsyncSession = Depends
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/hour")
 async def register(request: Request, body: RegisterRequest, db: AsyncSession = Depends(get_db)):
+    # Reject emails whose domain has no MX records (fake/typo domains)
+    if not await has_mx_record(body.email):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Email domain does not exist or cannot receive mail. Please use a valid email address.",
+        )
+
     result = await db.execute(select(User).where(User.email == body.email))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
@@ -206,6 +214,10 @@ async def forgot_password(
     db: AsyncSession = Depends(get_db),
 ):
     """Send a password reset email. Always returns 200 to avoid email enumeration."""
+    # Silently skip invalid domains — same message as valid ones (no enumeration)
+    if not await has_mx_record(body.email):
+        return {"message": "If that email is registered, a reset link has been sent."}
+
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
 
