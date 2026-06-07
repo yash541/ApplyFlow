@@ -40,15 +40,16 @@ export function PhotoCVTemplate({
   const bannerPadH = compact ? 28 : 36;
   const bannerPadV = compact ? 16 : 22;
 
-  // Contact items for banner (right column)
+  // Contact items for banner — no Unicode icons (Helvetica/Times can't render them)
+  // Use plain text labels instead
   const contactItems = [
-    content.contact.phone    && { icon: "☎", text: content.contact.phone },
-    content.contact.email    && { icon: "✉", text: content.contact.email },
-    content.contact.location && { icon: "◎", text: content.contact.location },
-    content.contact.linkedin && { icon: "in", text: content.contact.linkedin },
-    content.contact.github   && { icon: "◇", text: content.contact.github },
-    content.contact.website  && { icon: "⊕", text: content.contact.website },
-  ].filter(Boolean) as { icon: string; text: string }[];
+    content.contact.phone    && { label: "T:", text: content.contact.phone },
+    content.contact.email    && { label: "E:", text: content.contact.email },
+    content.contact.location && { label: "",   text: content.contact.location },
+    content.contact.linkedin && { label: "",   text: content.contact.linkedin },
+    content.contact.github   && { label: "",   text: content.contact.github },
+    content.contact.website  && { label: "",   text: content.contact.website },
+  ].filter(Boolean) as { label: string; text: string }[];
 
   // ── Section header: accent text + full-width thin rule ───────────────────
   function SectionHeader({ id }: { id: string }) {
@@ -209,13 +210,17 @@ export function PhotoCVTemplate({
 
   return (
     <Document>
-      {/* No padding on Page — header band extends edge-to-edge */}
-      <Page size="A4" style={{ fontFamily: ff(), fontSize: c.fs, color: "#000" }}>
+      {/* Page paddingTop re-applies on every page so body content has top margin on page 2+.
+          The header banner uses marginTop: -bodyPadV to cancel it on page 1 only. */}
+      <Page size="A4" style={{ fontFamily: ff(), fontSize: c.fs, color: "#000", paddingTop: bodyPadV, paddingBottom: bodyPadV }}>
 
-        {/* ── Header Banner (accent background, full width) ─────────────── */}
+        {/* ── Header Banner — negative marginTop cancels the Page paddingTop on page 1 */}
         <View style={{
           backgroundColor: accentColor,
-          paddingTop: bannerPadV,
+          marginTop: -bodyPadV,
+          marginLeft: 0,
+          marginRight: 0,
+          paddingTop: bannerPadV + bodyPadV,
           paddingBottom: bannerPadV,
           paddingLeft: bannerPadH,
           paddingRight: bannerPadH,
@@ -262,9 +267,11 @@ export function PhotoCVTemplate({
             <View style={{ alignItems: "flex-end", flexShrink: 0, marginLeft: 12 }}>
               {contactItems.slice(0, 5).map((item, i) => (
                 <View key={i} style={{ flexDirection: "row", alignItems: "center", marginBottom: compact ? 2 : 3 }}>
-                  <Text style={{ fontSize: c.fsTiny, color: "rgba(255,255,255,0.60)", marginRight: 4 }}>
-                    {item.icon}
-                  </Text>
+                  {item.label ? (
+                    <Text style={{ fontSize: c.fsTiny, color: "rgba(255,255,255,0.60)", marginRight: 3, fontFamily: ff(true) }}>
+                      {item.label}
+                    </Text>
+                  ) : null}
                   <Text style={{ fontSize: c.fsTiny, color: "rgba(255,255,255,0.90)" }}>
                     {item.text}
                   </Text>
@@ -275,7 +282,7 @@ export function PhotoCVTemplate({
         </View>
 
         {/* ── Body (single column, padded) ─────────────────────────────── */}
-        <View style={{ paddingTop: bodyPadV, paddingBottom: bodyPadV, paddingLeft: bodyPadH, paddingRight: bodyPadH }}>
+        <View style={{ paddingLeft: bodyPadH, paddingRight: bodyPadH, paddingBottom: bodyPadV }}>
           {sectionOrder.map(id => {
             if (id in sections) return sections[id] || null;
             const custom = content.customSections?.find(s => s.id === id);
