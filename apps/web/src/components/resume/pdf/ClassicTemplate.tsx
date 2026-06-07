@@ -23,8 +23,21 @@ export function ClassicTemplate({ content, accentColor, fontStyle, compact, layo
   // ── Shared styles ──────────────────────────────────────────────────────────
 
   // Section band: filled background header (the key visual change)
+  // Derive a very light tint from the accent color (88% white + 12% accent)
+  // so the band reflects the chosen color while staying pastel/subtle
+  function hexTint(hex: string, lightness = 0.88): string {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    const tr = Math.round(r + (255 - r) * lightness);
+    const tg = Math.round(g + (255 - g) * lightness);
+    const tb = Math.round(b + (255 - b) * lightness);
+    return `#${tr.toString(16).padStart(2, "0")}${tg.toString(16).padStart(2, "0")}${tb.toString(16).padStart(2, "0")}`;
+  }
+  const bandColor = hexTint(accentColor.length === 7 ? accentColor : "#2563eb");
+
   const bandContainer = {
-    backgroundColor: "#e2e8f0",
+    backgroundColor: bandColor,
     paddingTop: compact ? 3 : 4,
     paddingBottom: compact ? 3 : 4,
     paddingLeft: compact ? 6 : 8,
@@ -242,10 +255,9 @@ export function ClassicTemplate({ content, accentColor, fontStyle, compact, layo
           </Text>
         )}
 
-        {/* Contact — thin rule / pipe-separated / thin rule */}
+        {/* Contact — pipe-separated / thin rule below only */}
         {contactParts.length > 0 && (
           <>
-            <View style={{ borderBottomWidth: 0.75, borderBottomColor: "#555", marginBottom: compact ? 4 : 5 }} />
             <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "center", marginBottom: compact ? 4 : 5 }}>
               {contactParts.map((part, i) => (
                 <Text key={i} style={{ fontSize: c.fsTiny, color: "#333" }}>
