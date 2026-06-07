@@ -52,6 +52,7 @@ const TEMPLATES: { id: TemplateId; label: string; desc: string; ats: "best" | "g
   { id: "minimal",   label: "Minimal",        desc: "Clean & airy",   ats: "good" },
   { id: "ats",       label: "ATS-Ready",      desc: "Max compat",     ats: "best" },
   { id: "executive", label: "Professional",   desc: "Premium header", ats: "good" },
+  { id: "jakes",     label: "Jake's",         desc: "Overleaf style", ats: "best" },
 ];
 
 const ATS_BADGE: Record<string, { label: string; color: string }> = {
@@ -96,6 +97,22 @@ function TemplateThumbnail({ id, active }: { id: TemplateId; active: boolean }) 
     <div style={{ position: "relative", height: 52, background: bg, borderRadius: 4, overflow: "hidden" }}>
       {line(4, 4, 4, 3, 0.5)}
       {[10,13,19,23,27,33,37,41].map(t => line(t, 4, 4, 1.5, 0.15))}
+    </div>
+  );
+  if (id === "jakes") return (
+    <div style={{ position: "relative", height: 52, background: bg, borderRadius: 4, overflow: "hidden" }}>
+      {/* Large centered name */}
+      <div style={{ position: "absolute", top: 3, left: "25%", right: "25%", height: 3, background: "rgba(255,255,255,0.55)", borderRadius: 1 }} />
+      {/* Full-width rule under section header */}
+      {[9, 25, 41].map(t => (
+        <div key={t} style={{ position: "absolute", top: t, left: 4, right: 4, height: 0.75, background: "rgba(255,255,255,0.35)", borderRadius: 1 }} />
+      ))}
+      {/* Section header label */}
+      {[7, 23, 39].map(t => (
+        <div key={t} style={{ position: "absolute", top: t, left: 4, width: 14, height: 1.5, background: "rgba(255,255,255,0.5)", borderRadius: 1 }} />
+      ))}
+      {/* Content lines */}
+      {[12,15,18,28,31,34,44,47].map(t => line(t, 4, 4, 1.5, 0.15))}
     </div>
   );
   // classic
@@ -1238,7 +1255,7 @@ export function ResumeSplitEditor() {
           {/* ── Template ─────────────────────────────────────────────────── */}
           <div className="px-4 pt-4 pb-3 border-b border-white/5">
             <SectionHeader label="Template" />
-            <div className="grid grid-cols-5 gap-1.5">
+            <div className="grid grid-cols-6 gap-1">
               {TEMPLATES.map(t => {
                 const badge = ATS_BADGE[t.ats]!;
                 const active = selectedTemplate === t.id;

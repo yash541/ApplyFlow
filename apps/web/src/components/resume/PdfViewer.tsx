@@ -9,6 +9,7 @@ import { ModernTemplate } from "./pdf/ModernTemplate";
 import { MinimalTemplate } from "./pdf/MinimalTemplate";
 import { ATSSafeTemplate } from "./pdf/ATSSafeTemplate";
 import { ExecutiveTemplate } from "./pdf/ExecutiveTemplate";
+import { JakesTemplate } from "./pdf/JakesTemplate";
 import { DEFAULT_SECTION_ORDER, type TemplateProps } from "./pdf/shared";
 import type { TemplateId } from "@/store/resumeLab";
 
@@ -57,6 +58,7 @@ export function PdfViewer({
       templateId === "minimal"   ? <MinimalTemplate   {...tplProps} /> :
       templateId === "ats"       ? <ATSSafeTemplate   {...tplProps} /> :
       templateId === "executive" ? <ExecutiveTemplate {...tplProps} /> :
+      templateId === "jakes"     ? <JakesTemplate     {...tplProps} /> :
                                    <ClassicTemplate   {...tplProps} />;
 
     pdf(doc).toBlob()

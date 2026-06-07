@@ -54,7 +54,7 @@ export interface TailoredContent {
   customSections?: CustomSection[];
 }
 
-export type TemplateId = "classic" | "modern" | "minimal" | "ats" | "executive";
+export type TemplateId = "classic" | "modern" | "minimal" | "ats" | "executive" | "jakes";
 export type FontStyle = "sans" | "serif";
 
 export interface LayoutOverrides {
