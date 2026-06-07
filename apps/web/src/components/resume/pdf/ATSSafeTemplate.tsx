@@ -83,7 +83,7 @@ export function ATSSafeTemplate({
           </View>
           {/* Content */}
           <View wrap={false} style={{ flex: 1, minWidth: 0 }}>
-            <RichText style={{ fontSize: c.fsSmall, color: "#111" }} accentColor="#000">
+            <RichText style={{ fontSize: c.fsSmall, color: "#111", textAlign: "justify" }} accentColor="#000">
               {content.summary}
             </RichText>
           </View>
