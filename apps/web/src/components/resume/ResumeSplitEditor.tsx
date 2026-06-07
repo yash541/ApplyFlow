@@ -101,17 +101,23 @@ function TemplateThumbnail({ id, active }: { id: TemplateId; active: boolean }) 
     </div>
   );
   if (id === "photocv") return (
-    <div style={{ position: "relative", height: 52, background: bg, borderRadius: 4, overflow: "hidden", display: "flex" }}>
-      {/* Dark sidebar */}
-      <div style={{ width: 16, background: "rgba(27,42,71,0.9)", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 5 }}>
-        <div style={{ width: 10, height: 10, borderRadius: 5, background: "rgba(255,255,255,0.25)", marginBottom: 3 }} />
-        {[0,1,2,3,4].map(i => <div key={i} style={{ width: 8, height: 1.5, background: "rgba(255,255,255,0.15)", borderRadius: 1, marginBottom: 2 }} />)}
+    <div style={{ position: "relative", height: 52, background: bg, borderRadius: 4, overflow: "hidden" }}>
+      {/* Top banner */}
+      <div style={{ height: 18, background: "rgba(99,102,241,0.7)", display: "flex", alignItems: "center", padding: "0 4px", gap: 4 }}>
+        <div style={{ width: 10, height: 10, borderRadius: 5, background: "rgba(255,255,255,0.35)", flexShrink: 0 }} />
+        <div style={{ flex: 1 }}>
+          <div style={{ height: 2.5, width: "55%", background: "rgba(255,255,255,0.6)", borderRadius: 1, marginBottom: 2 }} />
+          <div style={{ height: 1.5, width: "35%", background: "rgba(255,255,255,0.3)", borderRadius: 1 }} />
+        </div>
+        <div style={{ flexShrink: 0 }}>
+          {[0,1,2].map(i => <div key={i} style={{ height: 1, width: 20, background: "rgba(255,255,255,0.3)", marginBottom: 1.5, borderRadius: 1 }} />)}
+        </div>
       </div>
-      {/* Main area */}
-      <div style={{ flex: 1, padding: "4px 3px", position: "relative" }}>
-        <div style={{ height: 3, width: "60%", background: "rgba(255,255,255,0.5)", borderRadius: 1, marginBottom: 1 }} />
-        <div style={{ height: 1.5, width: "35%", background: "rgba(255,255,255,0.2)", borderRadius: 1, marginBottom: 4 }} />
-        {[0,1,2,3,4,5,6].map(i => <div key={i} style={{ height: 1.5, background: "rgba(255,255,255,0.12)", borderRadius: 1, marginBottom: 2, width: i % 3 === 2 ? "70%" : "95%" }} />)}
+      {/* Body lines */}
+      <div style={{ padding: "3px 4px" }}>
+        {[0,1,2,3,4,5,6].map(i => (
+          <div key={i} style={{ height: 1.5, background: "rgba(255,255,255,0.12)", borderRadius: 1, marginBottom: 2, width: i % 4 === 0 ? "30%" : i % 3 === 2 ? "75%" : "95%" }} />
+        ))}
       </div>
     </div>
   );
