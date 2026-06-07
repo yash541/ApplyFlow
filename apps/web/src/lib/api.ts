@@ -66,6 +66,7 @@ export interface EducationEntry {
 }
 
 export interface MasterProfileData {
+  photo?: string;           // base64 JPEG data URL, max 200×200px
   phone: string;
   location: string;
   linkedin: string;

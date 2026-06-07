@@ -1,4 +1,4 @@
-import { Document, Page, Text, View } from "@react-pdf/renderer";
+import { Document, Page, Text, View, Image } from "@react-pdf/renderer";
 import { fontFamily, fontItalic, makeConfig, DEFAULT_SECTION_ORDER, getSectionLabel, flattenSkills, type TemplateProps } from "./shared";
 import { ContactLinks } from "./ContactLinks";
 import { RichText } from "./RichText";
@@ -240,6 +240,15 @@ export function ModernTemplate({ content, accentColor, fontStyle, compact, layou
         <View fixed style={{ position: "absolute", top: -pagePadV, left: 0, width: SIDEBAR_W, height: 842, backgroundColor: "#1e293b" }} />
         {/* Sidebar content */}
         <View style={{ width: SIDEBAR_W, paddingLeft: sidebarPadH, paddingRight: sidebarPadH, flexShrink: 0 }}>
+          {/* Profile photo — circular, only when content.photo is set */}
+          {content.photo && (
+            <View style={{ alignItems: "center", marginBottom: compact ? 10 : 14 }}>
+              <Image
+                src={content.photo}
+                style={{ width: compact ? 60 : 76, height: compact ? 60 : 76, borderRadius: compact ? 30 : 38 }}
+              />
+            </View>
+          )}
           {/* Name scales with fontDelta: base 15pt + delta, min 12 */}
           <Text style={{ fontSize: Math.max(12, c.fs + 5), fontFamily: ff(true), color: "#fff", marginBottom: 2 }}>
             {content.name || "Your Name"}

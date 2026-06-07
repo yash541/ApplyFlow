@@ -50,11 +50,12 @@ export interface TailoredContent {
   ats_score: number;
   ats_score_before?: number;
   keyword_stuffing_flags?: string[];
+  photo?: string;            // base64 JPEG — used by Sidebar & PhotoCV templates
   sectionNames?: Record<string, string>;
   customSections?: CustomSection[];
 }
 
-export type TemplateId = "classic" | "modern" | "minimal" | "ats" | "executive" | "jakes";
+export type TemplateId = "classic" | "modern" | "minimal" | "ats" | "executive" | "jakes" | "photocv";
 export type FontStyle = "sans" | "serif";
 
 export interface LayoutOverrides {

@@ -641,6 +641,61 @@ export function MasterProfileForm() {
       {/* ── Personal Info ───────────────────────────────────────────────────── */}
       <SectionCard title="Personal Info" icon={User}>
         <div className="space-y-4">
+
+          {/* Profile Photo */}
+          <div className="flex items-center gap-5">
+            <div className="relative shrink-0">
+              <div className="h-20 w-20 rounded-full bg-white/5 border-2 border-white/10 overflow-hidden flex items-center justify-center">
+                {data.photo
+                  ? <img src={data.photo} alt="Profile" className="h-full w-full object-cover" />
+                  : <User className="h-8 w-8 text-white/20" />}
+              </div>
+              <label className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full bg-primary border-2 border-[#0a0a14] flex items-center justify-center cursor-pointer hover:bg-primary/80 transition-colors">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const dataUrl = await new Promise<string>((resolve) => {
+                      const img = new window.Image();
+                      const url = URL.createObjectURL(file);
+                      img.onload = () => {
+                        const canvas = document.createElement("canvas");
+                        canvas.width = 200; canvas.height = 200;
+                        const ctx = canvas.getContext("2d")!;
+                        ctx.fillStyle = "#fff";
+                        ctx.fillRect(0, 0, 200, 200);
+                        const size = Math.min(img.width, img.height);
+                        ctx.drawImage(img, (img.width - size) / 2, (img.height - size) / 2, size, size, 0, 0, 200, 200);
+                        URL.revokeObjectURL(url);
+                        resolve(canvas.toDataURL("image/jpeg", 0.85));
+                      };
+                      img.src = url;
+                    });
+                    const next = { ...data, photo: dataUrl };
+                    setData(next);
+                    try { await api.profile.update(next); } catch { /* ignore */ }
+                  }}
+                />
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              </label>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-on-surface">Profile Photo</p>
+              <p className="text-xs text-on-surface-variant/50 mt-0.5">Used in Photo CV &amp; Sidebar templates</p>
+              {data.photo && (
+                <button
+                  onClick={() => setData({ ...data, photo: undefined })}
+                  className="text-xs text-red-400/70 hover:text-red-400 mt-1.5 transition-colors"
+                >
+                  Remove photo
+                </button>
+              )}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <Field label="Full Name">
               <TextInput value={name} onChange={setName} placeholder="Your full name" />

@@ -276,6 +276,11 @@ export function ResumeUploader() {
       }
       const parsed = parseJsonResponse(result);
       if (parsed) {
+        // Attach profile photo if available — used by Sidebar & PhotoCV templates
+        try {
+          const profile = await api.profile.get();
+          if (profile.data.photo) parsed.photo = profile.data.photo;
+        } catch { /* non-critical — photo is optional */ }
         setTailoredContent(parsed);
         setStreamPreview("");
       } else {

@@ -53,6 +53,7 @@ const TEMPLATES: { id: TemplateId; label: string; desc: string; ats: "best" | "g
   { id: "ats",       label: "ATS-Ready",      desc: "Max compat",     ats: "best" },
   { id: "executive", label: "Professional",   desc: "Premium header", ats: "good" },
   { id: "jakes",     label: "Jake's",         desc: "Overleaf style", ats: "best" },
+  { id: "photocv",   label: "Photo CV",       desc: "Photo + sidebar", ats: "low"  },
 ];
 
 const ATS_BADGE: Record<string, { label: string; color: string }> = {
@@ -97,6 +98,21 @@ function TemplateThumbnail({ id, active }: { id: TemplateId; active: boolean }) 
     <div style={{ position: "relative", height: 52, background: bg, borderRadius: 4, overflow: "hidden" }}>
       {line(4, 4, 4, 3, 0.5)}
       {[10,13,19,23,27,33,37,41].map(t => line(t, 4, 4, 1.5, 0.15))}
+    </div>
+  );
+  if (id === "photocv") return (
+    <div style={{ position: "relative", height: 52, background: bg, borderRadius: 4, overflow: "hidden", display: "flex" }}>
+      {/* Dark sidebar */}
+      <div style={{ width: 16, background: "rgba(27,42,71,0.9)", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 5 }}>
+        <div style={{ width: 10, height: 10, borderRadius: 5, background: "rgba(255,255,255,0.25)", marginBottom: 3 }} />
+        {[0,1,2,3,4].map(i => <div key={i} style={{ width: 8, height: 1.5, background: "rgba(255,255,255,0.15)", borderRadius: 1, marginBottom: 2 }} />)}
+      </div>
+      {/* Main area */}
+      <div style={{ flex: 1, padding: "4px 3px", position: "relative" }}>
+        <div style={{ height: 3, width: "60%", background: "rgba(255,255,255,0.5)", borderRadius: 1, marginBottom: 1 }} />
+        <div style={{ height: 1.5, width: "35%", background: "rgba(255,255,255,0.2)", borderRadius: 1, marginBottom: 4 }} />
+        {[0,1,2,3,4,5,6].map(i => <div key={i} style={{ height: 1.5, background: "rgba(255,255,255,0.12)", borderRadius: 1, marginBottom: 2, width: i % 3 === 2 ? "70%" : "95%" }} />)}
+      </div>
     </div>
   );
   if (id === "jakes") return (
