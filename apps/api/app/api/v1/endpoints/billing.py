@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import json
 import uuid as _uuid
-from datetime import datetime, timezone
+from datetime import timezone
 
 import razorpay
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -57,21 +57,6 @@ def _rzp_client() -> razorpay.Client:
     return razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
 
 
-async def _get_or_create_customer(user: User, client: razorpay.Client, db: AsyncSession) -> str:
-    """Return (or lazily create) the Razorpay customer ID for this user."""
-    if user.razorpay_customer_id:
-        return user.razorpay_customer_id
-
-    customer = client.customer.create({
-        "name": user.name,
-        "email": user.email,
-        "notes": {"user_id": str(user.id)},
-    })
-    user.razorpay_customer_id = customer["id"]
-    await db.flush()
-    return customer["id"]
-
-
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 
@@ -97,20 +82,18 @@ async def create_checkout_session(
     if not plan_id:
         raise HTTPException(status_code=503, detail=f"Razorpay {body.plan} plan ID is not configured.")
 
-    customer_id = await _get_or_create_customer(current_user, client, db)
-    await db.commit()
-
     # total_count = max billing cycles; large number = effectively indefinite
     total_count = 120 if body.plan == "monthly" else 10
 
-    subscription = client.subscription.create({
-        "plan_id": plan_id,
-        "customer_id": customer_id,
-        "customer_notify": 1,
-        "quantity": 1,
-        "total_count": total_count,
-        "notes": {"user_id": str(current_user.id)},
-    })
+    try:
+        subscription = client.subscription.create({
+            "plan_id": plan_id,
+            "total_count": total_count,
+            "quantity": 1,
+            "notes": {"user_id": str(current_user.id)},
+        })
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Razorpay error: {exc}")
 
     return {
         "subscription_id": subscription["id"],
@@ -153,10 +136,13 @@ async def cancel_subscription(
         raise HTTPException(status_code=400, detail="No active subscription found.")
 
     # cancel_at_cycle_end=1 keeps access until the period ends
-    client.subscription.cancel(
-        current_user.razorpay_subscription_id,
-        {"cancel_at_cycle_end": 1},
-    )
+    try:
+        client.subscription.cancel(
+            current_user.razorpay_subscription_id,
+            {"cancel_at_cycle_end": 1},
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Razorpay error: {exc}")
     return {"cancelled": True}
 
 
@@ -173,7 +159,10 @@ async def sync_plan(
     if not current_user.razorpay_subscription_id:
         return {"plan": current_user.plan, "synced": False, "reason": "no_subscription"}
 
-    sub = client.subscription.fetch(current_user.razorpay_subscription_id)
+    try:
+        sub = client.subscription.fetch(current_user.razorpay_subscription_id)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Razorpay error: {exc}")
     # Razorpay statuses: created | authenticated | active | paused | halted | cancelled | completed | expired
     status = sub.get("status", "")
 
