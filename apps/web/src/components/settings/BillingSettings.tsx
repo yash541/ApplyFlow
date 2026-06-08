@@ -74,7 +74,12 @@ export function BillingSettings() {
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
-  const [cancelMsg, setCancelMsg] = useState<string | null>(null);
+  const [cancelMsg, setCancelMsg] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem("af_sub_cancelled")
+      ? "Subscription cancelled. You'll retain Pro access until the end of your billing period."
+      : null;
+  });
 
   async function handleSync() {
     setSyncLoading(true);
@@ -100,6 +105,7 @@ export function BillingSettings() {
     setError(null);
     try {
       await api.billing.cancelSubscription();
+      localStorage.setItem("af_sub_cancelled", "1");
       setCancelMsg("Subscription cancelled. You'll retain Pro access until the end of your billing period.");
       setShowCancelConfirm(false);
     } catch (err) {
@@ -111,6 +117,11 @@ export function BillingSettings() {
 
   const isPro     = usage?.plan === "pro";
   const isExpired = usage?.plan === "expired";
+
+  // Clear cancellation flag once the plan actually downgrades
+  if (!isPro && typeof window !== "undefined") {
+    localStorage.removeItem("af_sub_cancelled");
+  }
 
   return (
     <>
