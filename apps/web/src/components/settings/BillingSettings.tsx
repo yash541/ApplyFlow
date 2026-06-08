@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Zap, Check, ExternalLink, RefreshCw, RefreshCcw } from "lucide-react";
+import { Zap, Check, RefreshCcw, AlertTriangle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { UpgradeModal } from "@/components/shared/UpgradeModal";
@@ -64,17 +64,17 @@ export function BillingSettings() {
   const { data: usage, isLoading: loading } = useQuery({
     queryKey: ["billing-usage"],
     queryFn: () => api.billing.getUsage(),
-    // Poll every 60s — catches extension-triggered increments and Stripe webhook changes
     refetchInterval: 60_000,
-    // Refetch whenever the user switches back to this tab
     refetchOnWindowFocus: true,
   });
 
-  const [portalLoading, setPortalLoading] = useState(false);
   const [syncLoading, setSyncLoading] = useState(false);
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [cancelMsg, setCancelMsg] = useState<string | null>(null);
 
   async function handleSync() {
     setSyncLoading(true);
@@ -86,24 +86,26 @@ export function BillingSettings() {
         setSyncMsg("Plan updated to Pro! Refreshing…");
         setTimeout(() => window.location.reload(), 1200);
       } else {
-        setSyncMsg("No active Pro subscription found in Stripe.");
+        setSyncMsg("No active Pro subscription found.");
       }
     } catch {
-      setError("Could not sync with Stripe. Try again in a moment.");
+      setError("Could not sync plan. Try again in a moment.");
     } finally {
       setSyncLoading(false);
     }
   }
 
-  async function handlePortal() {
-    setPortalLoading(true);
+  async function handleCancel() {
+    setCancelLoading(true);
     setError(null);
     try {
-      const { url } = await api.billing.createPortal();
-      window.location.href = url;
+      await api.billing.cancelSubscription();
+      setCancelMsg("Subscription cancelled. You'll retain Pro access until the end of your billing period.");
+      setShowCancelConfirm(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to open portal.");
-      setPortalLoading(false);
+      setError(err instanceof Error ? err.message : "Failed to cancel subscription.");
+    } finally {
+      setCancelLoading(false);
     }
   }
 
@@ -148,29 +150,14 @@ export function BillingSettings() {
             </div>
           </div>
 
-          {!loading && (
-            isPro ? (
-              <button
-                onClick={handlePortal}
-                disabled={portalLoading}
-                className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-label-sm text-on-surface-variant hover:bg-white/10 transition-colors disabled:opacity-60"
-              >
-                {portalLoading ? (
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <ExternalLink className="h-3.5 w-3.5" />
-                )}
-                Manage Subscription
-              </button>
-            ) : (
-              <button
-                onClick={() => setShowUpgrade(true)}
-                className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-label-sm font-semibold text-white hover:bg-primary/90 transition-colors"
-              >
-                <Zap className="h-3.5 w-3.5" />
-                Upgrade to Pro
-              </button>
-            )
+          {!loading && !isPro && (
+            <button
+              onClick={() => setShowUpgrade(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-label-sm font-semibold text-white hover:bg-primary/90 transition-colors"
+            >
+              <Zap className="h-3.5 w-3.5" />
+              Upgrade to Pro
+            </button>
           )}
         </div>
 
@@ -178,7 +165,7 @@ export function BillingSettings() {
           <p className="text-label-sm text-red-400">{error}</p>
         )}
 
-        {/* Sync fallback — shown when user paid but plan didn't update (webhook miss) */}
+        {/* Sync fallback */}
         {!loading && !isPro && (
           <div className="flex items-center gap-3">
             <button
@@ -198,7 +185,6 @@ export function BillingSettings() {
         {/* Usage meters */}
         {!loading && usage && (
           <div className="space-y-5">
-            {/* Monthly counters */}
             <div className="space-y-3">
               <p className="text-[10px] font-semibold text-on-surface-variant/50 uppercase tracking-wider">
                 This month&apos;s usage
@@ -223,7 +209,6 @@ export function BillingSettings() {
               />
             </div>
 
-            {/* Lifetime counters */}
             <div className="space-y-3">
               <p className="text-[10px] font-semibold text-on-surface-variant/50 uppercase tracking-wider">
                 Lifetime usage
@@ -261,6 +246,46 @@ export function BillingSettings() {
           </div>
         )}
 
+        {/* Cancel subscription (Pro users only) */}
+        {!loading && isPro && (
+          <div className="pt-2 border-t border-white/5">
+            {cancelMsg ? (
+              <p className="text-label-sm text-emerald-400">{cancelMsg}</p>
+            ) : showCancelConfirm ? (
+              <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 space-y-3">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
+                  <p className="text-label-sm text-red-300">
+                    Your Pro access continues until the end of the billing period. Are you sure you want to cancel?
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleCancel}
+                    disabled={cancelLoading}
+                    className="rounded-lg bg-red-500/20 border border-red-500/30 px-3 py-1.5 text-label-sm text-red-300 hover:bg-red-500/30 transition-colors disabled:opacity-50"
+                  >
+                    {cancelLoading ? "Cancelling…" : "Yes, cancel"}
+                  </button>
+                  <button
+                    onClick={() => setShowCancelConfirm(false)}
+                    className="rounded-lg border border-white/10 px-3 py-1.5 text-label-sm text-on-surface-variant hover:bg-white/5 transition-colors"
+                  >
+                    Keep Pro
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowCancelConfirm(true)}
+                className="text-label-sm text-on-surface-variant/40 hover:text-on-surface-variant/70 transition-colors"
+              >
+                Cancel subscription
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Expired plan callout */}
         {!loading && isExpired && (
           <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-3">
@@ -279,7 +304,7 @@ export function BillingSettings() {
           </div>
         )}
 
-        {/* Pro feature callout for free users (never had Pro) */}
+        {/* Pro feature callout for free users */}
         {!loading && !isPro && !isExpired && (
           <div className="rounded-xl border border-primary/15 bg-primary/5 p-4 space-y-2">
             <p className="text-label-sm font-semibold text-primary">What&apos;s included in Pro</p>

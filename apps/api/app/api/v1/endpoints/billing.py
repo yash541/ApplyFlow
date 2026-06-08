@@ -1,10 +1,14 @@
-"""Stripe billing endpoints.
+"""Razorpay billing endpoints.
 
-Handles checkout sessions, customer portal, webhooks, and usage reporting.
+Handles checkout sessions, webhooks, plan sync, cancellation, and usage reporting.
 """
+import hashlib
+import hmac
+import json
+import uuid as _uuid
 from datetime import datetime, timezone
 
-import stripe
+import razorpay
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from app.core.limiter import limiter
 from pydantic import BaseModel
@@ -23,13 +27,13 @@ router = APIRouter()
 
 
 class CheckoutRequest(BaseModel):
-    price_id: str
-    success_url: str
-    cancel_url: str
+    plan: str  # "monthly" | "annual"
 
 
-class PortalResponse(BaseModel):
-    url: str
+class VerifyPaymentRequest(BaseModel):
+    razorpay_payment_id: str
+    razorpay_subscription_id: str
+    razorpay_signature: str
 
 
 class UsageResponse(BaseModel):
@@ -47,33 +51,25 @@ class UsageResponse(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _stripe_client():
-    if not settings.STRIPE_SECRET_KEY:
-        raise HTTPException(status_code=503, detail="Stripe is not configured.")
-    stripe.api_key = settings.STRIPE_SECRET_KEY
-    return stripe
+def _rzp_client() -> razorpay.Client:
+    if not settings.RAZORPAY_KEY_ID or not settings.RAZORPAY_KEY_SECRET:
+        raise HTTPException(status_code=503, detail="Payment system is not configured.")
+    return razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
 
 
-def _ensure_stripe() -> None:
-    if not settings.STRIPE_SECRET_KEY:
-        raise HTTPException(status_code=503, detail="Stripe is not configured.")
-    stripe.api_key = settings.STRIPE_SECRET_KEY
+async def _get_or_create_customer(user: User, client: razorpay.Client, db: AsyncSession) -> str:
+    """Return (or lazily create) the Razorpay customer ID for this user."""
+    if user.razorpay_customer_id:
+        return user.razorpay_customer_id
 
-
-async def _get_or_create_customer(user: User, db: AsyncSession) -> str:
-    """Return (or lazily create) the Stripe customer ID for this user."""
-    _ensure_stripe()
-    if user.stripe_customer_id:
-        return user.stripe_customer_id
-
-    customer = stripe.Customer.create(
-        email=user.email,
-        name=user.name,
-        metadata={"user_id": str(user.id)},
-    )
-    user.stripe_customer_id = customer.id
+    customer = client.customer.create({
+        "name": user.name,
+        "email": user.email,
+        "notes": {"user_id": str(user.id)},
+    })
+    user.razorpay_customer_id = customer["id"]
     await db.flush()
-    return customer.id
+    return customer["id"]
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -87,38 +83,81 @@ async def create_checkout_session(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a Stripe Checkout session and return the redirect URL."""
-    _ensure_stripe()
-    customer_id = await _get_or_create_customer(current_user, db)
+    """Create a Razorpay subscription and return subscription_id + key_id for the frontend checkout."""
+    client = _rzp_client()
+
+    if body.plan not in ("monthly", "annual"):
+        raise HTTPException(status_code=400, detail="Invalid plan. Must be 'monthly' or 'annual'.")
+
+    plan_id = (
+        settings.RAZORPAY_MONTHLY_PLAN_ID
+        if body.plan == "monthly"
+        else settings.RAZORPAY_ANNUAL_PLAN_ID
+    )
+    if not plan_id:
+        raise HTTPException(status_code=503, detail=f"Razorpay {body.plan} plan ID is not configured.")
+
+    customer_id = await _get_or_create_customer(current_user, client, db)
     await db.commit()
 
-    session = stripe.checkout.Session.create(
-        customer=customer_id,
-        payment_method_types=["card"],
-        line_items=[{"price": body.price_id, "quantity": 1}],
-        mode="subscription",
-        success_url=body.success_url,
-        cancel_url=body.cancel_url,
-        metadata={"user_id": str(current_user.id)},
-    )
-    return {"url": session.url}
+    # total_count = max billing cycles; large number = effectively indefinite
+    total_count = 120 if body.plan == "monthly" else 10
+
+    subscription = client.subscription.create({
+        "plan_id": plan_id,
+        "customer_id": customer_id,
+        "customer_notify": 1,
+        "quantity": 1,
+        "total_count": total_count,
+        "notes": {"user_id": str(current_user.id)},
+    })
+
+    return {
+        "subscription_id": subscription["id"],
+        "key_id": settings.RAZORPAY_KEY_ID,
+    }
 
 
-@router.post("/portal", response_model=PortalResponse)
-async def create_portal_session(
+@router.post("/verify")
+async def verify_payment(
+    body: VerifyPaymentRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a Stripe Customer Portal session."""
-    _ensure_stripe()
-    customer_id = await _get_or_create_customer(current_user, db)
-    await db.commit()
+    """Verify Razorpay payment signature after checkout and immediately activate Pro."""
+    expected = hmac.new(
+        settings.RAZORPAY_KEY_SECRET.encode(),
+        f"{body.razorpay_payment_id}|{body.razorpay_subscription_id}".encode(),
+        hashlib.sha256,
+    ).hexdigest()
 
-    session = stripe.billing_portal.Session.create(
-        customer=customer_id,
-        return_url=f"{settings.WEB_APP_URL}/settings/billing",
+    if not hmac.compare_digest(expected, body.razorpay_signature):
+        raise HTTPException(status_code=400, detail="Invalid payment signature.")
+
+    current_user.plan = "pro"
+    current_user.has_had_pro = True
+    current_user.razorpay_subscription_id = body.razorpay_subscription_id
+    await db.commit()
+    return {"plan": "pro"}
+
+
+@router.post("/cancel")
+async def cancel_subscription(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Cancel the user's active subscription at the end of the current billing cycle."""
+    client = _rzp_client()
+
+    if not current_user.razorpay_subscription_id:
+        raise HTTPException(status_code=400, detail="No active subscription found.")
+
+    # cancel_at_cycle_end=1 keeps access until the period ends
+    client.subscription.cancel(
+        current_user.razorpay_subscription_id,
+        {"cancel_at_cycle_end": 1},
     )
-    return PortalResponse(url=session.url)
+    return {"cancelled": True}
 
 
 @router.post("/sync-plan")
@@ -128,121 +167,88 @@ async def sync_plan(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Manually sync the user's plan from Stripe.
+    """Manually sync the user's plan from Razorpay. Safe to call at any time — idempotent."""
+    client = _rzp_client()
 
-    Looks up the user's active subscriptions in Stripe and updates the DB.
-    Safe to call at any time — idempotent. Useful when a webhook was missed.
-    """
-    _ensure_stripe()
+    if not current_user.razorpay_subscription_id:
+        return {"plan": current_user.plan, "synced": False, "reason": "no_subscription"}
 
-    if not current_user.stripe_customer_id:
-        return {"plan": current_user.plan, "synced": False, "reason": "no_stripe_customer"}
+    sub = client.subscription.fetch(current_user.razorpay_subscription_id)
+    # Razorpay statuses: created | authenticated | active | paused | halted | cancelled | completed | expired
+    status = sub.get("status", "")
 
-    # Fetch all active/trialing subscriptions for this customer
-    subs = stripe.Subscription.list(
-        customer=current_user.stripe_customer_id,
-        status="all",
-        limit=10,
-    )
-
-    active = next(
-        (s for s in subs.auto_paging_iter()
-         if s.status in ("active", "trialing")),
-        None,
-    )
-
-    new_plan = "pro" if active else "free"
-    if current_user.plan != new_plan:
+    new_plan = "pro" if status == "active" else "free"
+    changed = current_user.plan != new_plan
+    if changed:
         current_user.plan = new_plan
-        if active:
-            current_user.stripe_subscription_id = active.id
         await db.commit()
 
-    return {"plan": new_plan, "synced": current_user.plan != new_plan or True}
+    return {"plan": new_plan, "synced": changed}
 
 
 @router.post("/webhook")
-async def stripe_webhook(
+async def razorpay_webhook(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    stripe_signature: str = Header(None, alias="stripe-signature"),
+    x_razorpay_signature: str = Header(None, alias="X-Razorpay-Signature"),
 ):
-    """Handle Stripe webhook events.
+    """Handle Razorpay webhook events.
 
-    This endpoint has NO authentication — Stripe calls it directly.
+    This endpoint has NO authentication — Razorpay calls it directly.
     Signature is verified with the webhook secret.
     """
     payload = await request.body()
 
-    # Verify signature
-    try:
-        event = stripe.Webhook.construct_event(
-            payload=payload,
-            sig_header=stripe_signature,
-            secret=settings.STRIPE_WEBHOOK_SECRET,
-        )
-    except stripe.error.SignatureVerificationError:
+    expected = hmac.new(
+        settings.RAZORPAY_WEBHOOK_SECRET.encode(),
+        payload,
+        hashlib.sha256,
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected, x_razorpay_signature or ""):
         raise HTTPException(status_code=400, detail="Invalid webhook signature")
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Webhook error: {exc}")
 
-    event_type: str = event["type"]
+    try:
+        event = json.loads(payload)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
-    # ── checkout.session.completed ────────────────────────────────────────────
-    if event_type == "checkout.session.completed":
-        session_obj = event["data"]["object"]
-        user_id_str = session_obj.get("metadata", {}).get("user_id")
-        subscription_id = session_obj.get("subscription")
+    event_type: str = event.get("event", "")
+
+    # ── subscription.charged ─────────────────────────────────────────────────
+    if event_type == "subscription.charged":
+        sub = event.get("payload", {}).get("subscription", {}).get("entity", {})
+        sub_id = sub.get("id")
+        notes = sub.get("notes", {})
+        user_id_str = notes.get("user_id")
 
         if user_id_str:
             try:
-                import uuid as _uuid
                 user_uuid = _uuid.UUID(user_id_str)
             except ValueError:
                 return {"received": True}
-            result = await db.execute(
-                select(User).where(User.id == user_uuid)
-            )
+            result = await db.execute(select(User).where(User.id == user_uuid))
             user = result.scalar_one_or_none()
             if user:
                 user.plan = "pro"
-                user.has_had_pro = True  # permanent — never unset
-                if subscription_id:
-                    user.stripe_subscription_id = subscription_id
+                user.has_had_pro = True
+                if sub_id:
+                    user.razorpay_subscription_id = sub_id
                 await db.commit()
 
-    # ── customer.subscription.updated ────────────────────────────────────────
-    elif event_type == "customer.subscription.updated":
-        sub = event["data"]["object"]
-        customer_id = sub.get("customer")
-        status = sub.get("status")  # active | past_due | canceled | unpaid | trialing
+    # ── subscription.cancelled / completed / expired ──────────────────────────
+    elif event_type in ("subscription.cancelled", "subscription.completed", "subscription.expired"):
+        sub = event.get("payload", {}).get("subscription", {}).get("entity", {})
+        sub_id = sub.get("id")
 
-        result = await db.execute(
-            select(User).where(User.stripe_customer_id == customer_id)
-        )
-        user = result.scalar_one_or_none()
-        if user:
-            if status in ("active", "trialing"):
-                user.plan = "pro"
-                user.has_had_pro = True  # permanent — never unset
-            else:
+        if sub_id:
+            result = await db.execute(
+                select(User).where(User.razorpay_subscription_id == sub_id)
+            )
+            user = result.scalar_one_or_none()
+            if user:
                 user.plan = "free"
-            user.stripe_subscription_id = sub.get("id")
-            await db.commit()
-
-    # ── customer.subscription.deleted ────────────────────────────────────────
-    elif event_type == "customer.subscription.deleted":
-        sub = event["data"]["object"]
-        customer_id = sub.get("customer")
-
-        result = await db.execute(
-            select(User).where(User.stripe_customer_id == customer_id)
-        )
-        user = result.scalar_one_or_none()
-        if user:
-            user.plan = "free"
-            user.stripe_subscription_id = None
-            await db.commit()
+                await db.commit()
 
     return {"received": True}
 
@@ -260,9 +266,6 @@ async def get_usage(
     is_pro     = current_user.plan == "pro"
     is_expired = not is_pro and getattr(current_user, "has_had_pro", False)
 
-    # Expired users: had Pro before, now plan=free.
-    # Return zero limits so the extension and web app show the upgrade wall
-    # rather than the free trial credits they've already consumed.
     if is_expired:
         return UsageResponse(
             plan="expired",

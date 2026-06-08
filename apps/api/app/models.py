@@ -24,8 +24,8 @@ class User(Base):
     # Billing / plan
     plan: Mapped[str] = mapped_column(String(20), nullable=False, default="free")
     has_had_pro: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    stripe_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    stripe_subscription_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    razorpay_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    razorpay_subscription_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     total_downloads: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     resumes: Mapped[list["Resume"]] = relationship("Resume", back_populates="user", cascade="all, delete-orphan")

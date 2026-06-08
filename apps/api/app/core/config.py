@@ -39,11 +39,12 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str = ""
     FROM_EMAIL: str = "ApplyFlow <noreply@applyflow.in>"
 
-    # Stripe
-    STRIPE_SECRET_KEY: str = ""
-    STRIPE_WEBHOOK_SECRET: str = "whsec_placeholder"
-    STRIPE_MONTHLY_PRICE_ID: str = ""
-    STRIPE_ANNUAL_PRICE_ID: str = ""
+    # Razorpay
+    RAZORPAY_KEY_ID: str = ""
+    RAZORPAY_KEY_SECRET: str = ""
+    RAZORPAY_WEBHOOK_SECRET: str = ""
+    RAZORPAY_MONTHLY_PLAN_ID: str = ""
+    RAZORPAY_ANNUAL_PLAN_ID: str = ""
 
 
 settings = Settings()

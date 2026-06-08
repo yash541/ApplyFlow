@@ -261,18 +261,24 @@ export const api = {
     getUsage: () =>
       request<UsageData>("/api/v1/billing/usage"),
 
-    createCheckout: (priceId: string) =>
-      request<{ url: string }>("/api/v1/billing/checkout", {
+    createCheckout: (plan: "monthly" | "annual") =>
+      request<{ subscription_id: string; key_id: string }>("/api/v1/billing/checkout", {
         method: "POST",
-        body: {
-          price_id: priceId,
-          success_url: `${typeof window !== "undefined" ? window.location.origin : (process.env.NEXT_PUBLIC_WEB_URL ?? "http://localhost:3000")}/dashboard?upgraded=true`,
-          cancel_url: `${typeof window !== "undefined" ? window.location.origin : (process.env.NEXT_PUBLIC_WEB_URL ?? "http://localhost:3000")}/dashboard`,
-        },
+        body: { plan },
       }),
 
-    createPortal: () =>
-      request<{ url: string }>("/api/v1/billing/portal", { method: "POST" }),
+    verifyPayment: (data: {
+      razorpay_payment_id: string;
+      razorpay_subscription_id: string;
+      razorpay_signature: string;
+    }) =>
+      request<{ plan: string }>("/api/v1/billing/verify", {
+        method: "POST",
+        body: data,
+      }),
+
+    cancelSubscription: () =>
+      request<{ cancelled: boolean }>("/api/v1/billing/cancel", { method: "POST" }),
 
     syncPlan: () =>
       request<{ plan: string; synced: boolean }>("/api/v1/billing/sync-plan", { method: "POST" }),

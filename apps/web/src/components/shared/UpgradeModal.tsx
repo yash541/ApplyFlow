@@ -1,8 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, Zap, Check, Sparkles, RefreshCw, FileText, Target, Brain } from "lucide-react";
 import { api } from "@/lib/api";
+import { useAuthStore } from "@/store/auth";
+
+declare global {
+  interface Window {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    Razorpay: new (options: Record<string, unknown>) => { open(): void };
+  }
+}
 
 interface UpgradeModalProps {
   open: boolean;
@@ -26,28 +34,82 @@ const PRO_FEATURES = [
   { icon: Sparkles,   label: "Profile AI rewrite" },
 ];
 
-const MONTHLY_PRICE_ID =
-  process.env.NEXT_PUBLIC_STRIPE_MONTHLY_PRICE_ID ??
-  "price_1Tdaea42KJyHIqXTPKiZyzo9";
-const ANNUAL_PRICE_ID =
-  process.env.NEXT_PUBLIC_STRIPE_ANNUAL_PRICE_ID ??
-  "price_1Tdaea42KJyHIqXTVXjV7gye";
+function loadRazorpayScript(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (window.Razorpay) { resolve(true); return; }
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
 
 export function UpgradeModal({ open, onClose, reason }: UpgradeModalProps) {
   const [loading, setLoading] = useState<"monthly" | "annual" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const user = useAuthStore((s) => s.user);
+
+  // Preload Razorpay script when modal opens
+  useEffect(() => {
+    if (open) loadRazorpayScript();
+  }, [open]);
 
   if (!open) return null;
 
   async function handleCheckout(plan: "monthly" | "annual") {
     setLoading(plan);
     setError(null);
+
     try {
-      const priceId = plan === "monthly" ? MONTHLY_PRICE_ID : ANNUAL_PRICE_ID;
-      const { url } = await api.billing.createCheckout(priceId);
-      window.location.href = url;
+      const loaded = await loadRazorpayScript();
+      if (!loaded) throw new Error("Could not load payment SDK. Check your internet connection.");
+
+      const { subscription_id, key_id } = await api.billing.createCheckout(plan);
+
+      await new Promise<void>((resolve, reject) => {
+        const rzp = new window.Razorpay({
+          key: key_id,
+          subscription_id,
+          name: "ApplyFlow",
+          description: plan === "monthly" ? "Pro — Monthly" : "Pro — Annual",
+          image: "/logo.png",
+          prefill: {
+            name: user?.name ?? "",
+            email: user?.email ?? "",
+          },
+          theme: { color: "#6366f1" },
+          handler: async (response: {
+            razorpay_payment_id: string;
+            razorpay_subscription_id: string;
+            razorpay_signature: string;
+          }) => {
+            try {
+              await api.billing.verifyPayment({
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_subscription_id: response.razorpay_subscription_id,
+                razorpay_signature: response.razorpay_signature,
+              });
+              resolve();
+            } catch (err) {
+              reject(err);
+            }
+          },
+          modal: {
+            ondismiss: () => reject(new Error("dismissed")),
+          },
+        });
+        rzp.open();
+      });
+
+      // Payment verified — reload to refresh plan state everywhere
+      window.location.href = "/dashboard?upgraded=true";
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      if (err instanceof Error && err.message === "dismissed") {
+        // User closed the modal — no error shown
+      } else {
+        setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      }
       setLoading(null);
     }
   }
@@ -86,7 +148,7 @@ export function UpgradeModal({ open, onClose, reason }: UpgradeModalProps) {
           </div>
         </div>
 
-        {/* Reason banner — map internal codes to human-readable messages */}
+        {/* Reason banner */}
         {reason && (
           <div className="mt-4 px-4 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-label-sm text-amber-400">
             {REASON_MESSAGES[reason] ?? reason}
@@ -114,10 +176,10 @@ export function UpgradeModal({ open, onClose, reason }: UpgradeModalProps) {
             className="relative flex flex-col items-center rounded-xl border border-white/10 bg-white/[0.03] p-4 text-center hover:border-primary/40 hover:bg-primary/5 transition-all disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-primary/50"
           >
             <span className="text-label-sm text-on-surface-variant mb-1">Monthly</span>
-            <span className="text-headline-sm font-display font-bold text-on-surface">$12</span>
+            <span className="text-headline-sm font-display font-bold text-on-surface">₹999</span>
             <span className="text-label-xs text-on-surface-variant/60 mt-0.5">per month</span>
             {loading === "monthly" && (
-              <span className="mt-2 text-label-xs text-primary animate-pulse">Redirecting...</span>
+              <span className="mt-2 text-label-xs text-primary animate-pulse">Opening checkout…</span>
             )}
           </button>
 
@@ -131,10 +193,10 @@ export function UpgradeModal({ open, onClose, reason }: UpgradeModalProps) {
               SAVE 31%
             </span>
             <span className="text-label-sm text-on-surface-variant mb-1">Annual</span>
-            <span className="text-headline-sm font-display font-bold text-on-surface">$99</span>
+            <span className="text-headline-sm font-display font-bold text-on-surface">₹8,299</span>
             <span className="text-label-xs text-on-surface-variant/60 mt-0.5">per year</span>
             {loading === "annual" && (
-              <span className="mt-2 text-label-xs text-primary animate-pulse">Redirecting...</span>
+              <span className="mt-2 text-label-xs text-primary animate-pulse">Opening checkout…</span>
             )}
           </button>
         </div>
@@ -144,7 +206,7 @@ export function UpgradeModal({ open, onClose, reason }: UpgradeModalProps) {
         )}
 
         <p className="mt-4 text-center text-label-xs text-on-surface-variant/50">
-          Secure payment via Stripe · Cancel anytime
+          Secure payment via Razorpay · Cancel anytime
         </p>
       </div>
     </div>

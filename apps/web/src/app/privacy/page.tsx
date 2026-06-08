@@ -23,7 +23,7 @@ export default function PrivacyPage() {
               <li><strong>Application data:</strong> Job titles, companies, URLs, and statuses of applications you track.</li>
               <li><strong>Job page content:</strong> Text from job listing pages read by the Chrome extension to generate match scores and extract job details. This data is sent to our API and processed by AI models.</li>
               <li><strong>Usage data:</strong> Monthly counts of features used (autofill sessions, match scores, resume tailorings) to enforce free-tier limits.</li>
-              <li><strong>Payment information:</strong> Handled entirely by Stripe. We store only your Stripe customer ID and subscription ID — never your card details.</li>
+              <li><strong>Payment information:</strong> Handled entirely by Razorpay. We store only your Razorpay customer ID and subscription ID — never your card details.</li>
             </ul>
           </div>
 
@@ -33,7 +33,7 @@ export default function PrivacyPage() {
               <li>To provide and operate the ApplyFlow service (resume tailoring, autofill, match scoring, application tracking).</li>
               <li>To authenticate your account and maintain your session securely.</li>
               <li>To send transactional emails (email verification, account notices) via Resend.</li>
-              <li>To process subscription payments via Stripe.</li>
+              <li>To process subscription payments via Razorpay.</li>
               <li>To improve our AI models and service quality (in aggregate, anonymized form only).</li>
             </ul>
             <p className="mt-3">We do <strong>not</strong> sell your data. We do <strong>not</strong> use your data for advertising or profiling unrelated to the service.</p>
@@ -54,7 +54,7 @@ export default function PrivacyPage() {
             <h2 className="text-xl font-semibold text-white mb-3">5. Third-Party Services</h2>
             <ul className="list-disc pl-5 space-y-2">
               <li><strong>Anthropic (Claude AI):</strong> Job descriptions and resume text are sent to Anthropic's API to generate match scores and tailored content. Anthropic's privacy policy applies.</li>
-              <li><strong>Stripe:</strong> Payment processing. We never see or store your card details.</li>
+              <li><strong>Razorpay:</strong> Payment processing. We never see or store your card details.</li>
               <li><strong>Resend:</strong> Transactional email delivery (verification emails only).</li>
               <li><strong>Railway:</strong> Our backend infrastructure hosting provider.</li>
               <li><strong>Vercel:</strong> Our frontend hosting provider.</li>
@@ -63,7 +63,7 @@ export default function PrivacyPage() {
 
           <div>
             <h2 className="text-xl font-semibold text-white mb-3">6. Data Retention</h2>
-            <p>We retain your data for as long as your account is active. You may delete your account and all associated data at any time by contacting us at <strong>avulayashwanth64@gmail.com</strong>. Stripe subscription records are retained per Stripe's policies.</p>
+            <p>We retain your data for as long as your account is active. You may delete your account and all associated data at any time by contacting us at <strong>avulayashwanth64@gmail.com</strong>. Razorpay subscription records are retained per Razorpay's policies.</p>
           </div>
 
           <div>

@@ -26,7 +26,7 @@ export function UpgradeSuccessToast() {
       router.replace(url.pathname + (url.search || ""), { scroll: false });
     };
 
-    // Step 1: call /billing/sync-plan immediately — directly verifies with Stripe
+    // Step 1: call /billing/sync-plan immediately — verifies with Razorpay
     // and updates the plan in DB without relying on the webhook at all.
     // This makes the upgrade flow bulletproof even if the webhook fails.
     api.billing.syncPlan().catch(() => {
