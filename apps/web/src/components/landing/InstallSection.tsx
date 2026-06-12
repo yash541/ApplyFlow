@@ -1,10 +1,17 @@
 "use client";
 
 import { useRef } from "react";
+import type React from "react";
 import { motion, useInView } from "framer-motion";
 import Link from "next/link";
 
-const STEPS = [
+const STEPS: {
+  num: string;
+  title: string;
+  desc: string;
+  icon: React.ReactNode;
+  cta?: { label: string; href: string; external?: boolean };
+}[] = [
   {
     num: "1",
     title: "Create your free account",
@@ -21,7 +28,7 @@ const STEPS = [
     num: "2",
     title: "Install the Chrome extension",
     desc: "Install ApplyFlow AI from the Chrome Web Store in one click. It automatically connects to your account — no separate login needed.",
-    cta: { label: "Chrome Web Store →", href: "https://chrome.google.com/webstore" },
+    cta: { label: "Add to Chrome →", href: "https://chromewebstore.google.com/detail/applyflow-ai/mcfbemijiellcnldfimonigejmjhejpf", external: true },
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
         <circle cx="12" cy="12" r="10" />
@@ -121,6 +128,7 @@ export function InstallSection() {
               {step.cta && (
                 <Link
                   href={step.cta.href}
+                  {...(step.cta.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
                   className="inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-400 hover:text-indigo-300 transition-colors"
                 >
                   {step.cta.label}

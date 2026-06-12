@@ -55,6 +55,19 @@ export function Navbar() {
 
         {/* CTA buttons */}
         <div className="flex items-center gap-3">
+          <a
+            href="https://chromewebstore.google.com/detail/applyflow-ai/mcfbemijiellcnldfimonigejmjhejpf"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden md:flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg border border-white/10 bg-white/[0.04] text-white/70 hover:text-white hover:border-white/20 hover:bg-white/[0.08] transition-all duration-150"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="text-indigo-400">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z" />
+              <circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M12 2C6.48 2 2 6.48 2 12h4c0-3.31 2.69-6 6-6V2z" />
+            </svg>
+            Get Extension
+          </a>
           <Link
             href="/login"
             className="hidden sm:block px-4 py-2 text-sm font-medium text-white/70 hover:text-white transition-colors"
