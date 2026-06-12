@@ -23,7 +23,7 @@ export function Footer() {
             AI-powered career operating system. Score, apply, tailor, and track — all in one place.
           </p>
           <p className="text-xs text-white/20 mt-1">
-            Powered by Claude AI (Anthropic)
+            Powered by advanced AI models
           </p>
         </div>
 

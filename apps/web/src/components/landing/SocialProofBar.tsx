@@ -63,8 +63,8 @@ export function SocialProofBar() {
           <span className="text-sm font-medium text-white/40 flex-shrink-0">Powered by:</span>
           <div className="flex flex-wrap items-center gap-2">
             {[
-              { label: "Claude AI (Anthropic)", color: "text-violet-400 border-violet-500/30 bg-violet-500/10" },
-              { label: "Stripe Billing", color: "text-indigo-400 border-indigo-500/30 bg-indigo-500/10" },
+              { label: "Advanced AI Models", color: "text-violet-400 border-violet-500/30 bg-violet-500/10" },
+              { label: "Razorpay", color: "text-indigo-400 border-indigo-500/30 bg-indigo-500/10" },
               { label: "Resend Email", color: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10" },
             ].map((item) => (
               <span

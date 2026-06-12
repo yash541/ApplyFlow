@@ -53,7 +53,7 @@ export default function PrivacyPage() {
           <div>
             <h2 className="text-xl font-semibold text-white mb-3">5. Third-Party Services</h2>
             <ul className="list-disc pl-5 space-y-2">
-              <li><strong>Anthropic (Claude AI):</strong> Job descriptions and resume text are sent to Anthropic's API to generate match scores and tailored content. Anthropic's privacy policy applies.</li>
+              <li><strong>Anthropic:</strong> Job descriptions and resume text are sent to Anthropic's API to generate match scores and tailored content. Anthropic's privacy policy applies.</li>
               <li><strong>Razorpay:</strong> Payment processing. We never see or store your card details.</li>
               <li><strong>Resend:</strong> Transactional email delivery (verification emails only).</li>
               <li><strong>Railway:</strong> Our backend infrastructure hosting provider.</li>
