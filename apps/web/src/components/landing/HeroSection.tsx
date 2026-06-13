@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { ExtensionPanelMockup } from "./ExtensionPanelMockup";
+import { HeroMockup } from "./HeroMockup";
 
 export function HeroSection() {
   return (
@@ -141,7 +141,7 @@ export function HeroSection() {
           transition={{ duration: 0.7, delay: 0.4 }}
           className="flex-shrink-0"
         >
-          <ExtensionPanelMockup />
+          <HeroMockup />
         </motion.div>
       </div>
     </section>
