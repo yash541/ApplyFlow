@@ -132,24 +132,6 @@ export function HeroSection() {
             Free to start · No credit card required · Works on 20+ ATS portals
           </motion.p>
 
-          {/* Stats */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.75 }}
-            className="flex items-center gap-8 mt-8 lg:justify-start justify-center"
-          >
-            {[
-              { val: "20+", label: "ATS portals" },
-              { val: "3", label: "AI models" },
-              { val: "$0", label: "To start" },
-            ].map((stat) => (
-              <div key={stat.label} className="text-center">
-                <div className="text-2xl font-bold text-indigo-400">{stat.val}</div>
-                <div className="text-xs text-white/40 mt-0.5">{stat.label}</div>
-              </div>
-            ))}
-          </motion.div>
         </div>
 
         {/* Right: Mockup */}

@@ -1,7 +1,6 @@
 import {
   Navbar,
   HeroSection,
-  SocialProofBar,
   FeaturesSection,
   HowItWorks,
   FeatureGrid,
@@ -20,7 +19,6 @@ export default function LandingPage() {
     >
       <Navbar />
       <HeroSection />
-      <SocialProofBar />
       <DemoSection />
       <FeaturesSection />
       <HowItWorks />
