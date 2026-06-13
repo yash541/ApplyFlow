@@ -10,6 +10,7 @@ import {
   FinalCTA,
   Footer,
 } from "@/components/landing";
+import { DemoSection } from "@/components/landing/DemoSection";
 
 export default function LandingPage() {
   return (
@@ -20,6 +21,7 @@ export default function LandingPage() {
       <Navbar />
       <HeroSection />
       <SocialProofBar />
+      <DemoSection />
       <FeaturesSection />
       <HowItWorks />
       <FeatureGrid />
