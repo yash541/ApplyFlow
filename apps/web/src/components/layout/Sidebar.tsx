@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -28,6 +29,13 @@ const NAV_ITEMS = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [extensionInstalled, setExtensionInstalled] = useState(false);
+
+  useEffect(() => {
+    setExtensionInstalled(
+      document.documentElement.hasAttribute("data-af-extension")
+    );
+  }, []);
 
   return (
     <aside className="w-[220px] shrink-0 flex flex-col h-full glass-panel border-r border-white/5">
@@ -83,7 +91,8 @@ export function Sidebar() {
           </span>
         </Link>
 
-        {/* Extension promo */}
+        {/* Extension promo — hidden if already installed */}
+        {!extensionInstalled && (
         <a
           href="https://chromewebstore.google.com/detail/applyflow-ai/mcfbemijiellcnldfimonigejmjhejpf"
           target="_blank"
@@ -112,6 +121,7 @@ export function Sidebar() {
             Add to Chrome — Free
           </div>
         </a>
+        )}
       </div>
     </aside>
   );

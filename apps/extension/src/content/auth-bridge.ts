@@ -13,6 +13,9 @@
  * Result: logging in on either side propagates to the other automatically.
  */
 
+// Signal to the web app that the extension is installed and active
+document.documentElement.setAttribute("data-af-extension", "1");
+
 const SESSION_KEY = "af_session";
 
 type SyncSession = {
