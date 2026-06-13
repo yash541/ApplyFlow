@@ -19,10 +19,15 @@ export const metadata: Metadata = {
   description:
     "AI-powered job search platform. Tailor resumes, track applications, ace interviews — all in one place.",
   keywords: ["AI resume", "job application tracker", "career AI", "LinkedIn automation"],
+  metadataBase: new URL("https://www.applyflow.in"),
+  alternates: {
+    canonical: "https://www.applyflow.in",
+  },
   openGraph: {
     title: "ApplyFlow AI",
     description: "Your AI-powered career operating system",
     type: "website",
+    url: "https://www.applyflow.in",
   },
 };
 
