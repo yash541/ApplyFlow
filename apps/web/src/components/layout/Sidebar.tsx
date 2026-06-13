@@ -84,14 +84,34 @@ export function Sidebar() {
         </Link>
 
         {/* Extension promo */}
-        <div className="mt-3 mx-1 p-3 rounded-xl bg-primary/5 border border-primary/15">
-          <p className="text-label-sm text-primary/80 font-medium mb-1">
-            Chrome Extension
+        <a
+          href="https://chromewebstore.google.com/detail/applyflow-ai/mcfbemijiellcnldfimonigejmjhejpf"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 mx-1 p-3 rounded-xl border flex flex-col gap-2 group transition-all duration-200 hover:border-primary/40 hover:bg-primary/10"
+          style={{ background: "rgba(99,102,241,0.07)", borderColor: "rgba(99,102,241,0.2)" }}
+        >
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-md bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-xs flex-shrink-0">
+              ⚡
+            </div>
+            <p className="text-label-sm font-semibold text-white/80 group-hover:text-white transition-colors">
+              Chrome Extension
+            </p>
+          </div>
+          <p className="text-[11px] text-on-surface-variant/50 leading-snug">
+            AI autofill & match scores directly on LinkedIn & ATS portals.
           </p>
-          <p className="text-label-sm text-on-surface-variant/60 leading-snug">
-            Auto-fill & match jobs on LinkedIn
-          </p>
-        </div>
+          <div className="flex items-center gap-1.5 mt-0.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-white justify-center transition-all"
+            style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Add to Chrome — Free
+          </div>
+        </a>
       </div>
     </aside>
   );
