@@ -435,7 +435,7 @@ export function DemoSection() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const progressRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const duration = STAGE_DURATIONS[stage];
+  const duration = STAGE_DURATIONS[stage] ?? 4000;
 
   const goToStage = (s: number) => {
     setStage(s);
@@ -546,7 +546,7 @@ export function DemoSection() {
                 <div className="w-5 h-5 rounded bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-xs">⚡</div>
                 <span className="text-xs text-white/40 font-medium">ApplyFlow</span>
                 <span className="text-white/15 mx-1">·</span>
-                <span className="text-xs text-white/25">{STAGES[stage].label}</span>
+                <span className="text-xs text-white/25">{STAGES[stage]?.label}</span>
               </div>
             </div>
 
