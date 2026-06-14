@@ -24,8 +24,6 @@ const PRO_FEATURES = [
   { label: "General Resumes library", note: "Save by role type, download anytime" },
   { label: "Unlimited resume downloads", note: "" },
   { label: "Profile that learns", note: "Saves answers across sessions" },
-  { label: "Cross-portal session continuity", note: "" },
-  { label: "Resume Lab zoom", note: "" },
   { label: "ATS score on resume", note: "" },
 ];
 
@@ -161,16 +159,6 @@ export function PricingSection() {
           </motion.div>
         </div>
 
-        {/* Bottom note */}
-        <motion.p
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5, delay: 0.3 }}
-          className="text-center text-sm text-white/30 mt-10"
-        >
-          Average active Pro user costs us ~$1.80/month in AI — the rest funds product development.
-        </motion.p>
       </div>
     </section>
   );

@@ -14,7 +14,7 @@ export const metadata: Metadata = { title: "Home — ApplyFlow" };
 export default function DashboardPage() {
   return (
     <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
-      {/* Upgrade success toast (shown after Stripe redirect) */}
+      {/* Upgrade success toast */}
       <Suspense fallback={null}>
         <UpgradeSuccessToast />
       </Suspense>
